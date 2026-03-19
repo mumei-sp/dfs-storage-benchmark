@@ -1,0 +1,2775 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DFS SDK — Storage Backend Performance Comparison</title>
+<link rel="stylesheet" href="css/styles.css">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+</head>
+<body>
+
+<!-- ═══════════════════════════════════════════════════════════════════════════ -->
+<!--  HEADER                                                                    -->
+<!-- ═══════════════════════════════════════════════════════════════════════════ -->
+<div class="header">
+  <h1><span>DFS SDK</span> — Storage Backend Comparison</h1>
+  <div class="header-meta">
+    <span class="badge">3-Node / 3-Rack</span>
+    <span class="badge">RustFs EC:4+4</span>
+    <span class="badge">Ozone EC:RS-6-3-1024k</span>
+    <span class="badge">Concurrency: 1 / 4 / 16 / 64</span>
+    <span id="systemCount" class="badge">2 Systems</span>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════════════════ -->
+<!--  TABS                                                                      -->
+<!-- ═══════════════════════════════════════════════════════════════════════════ -->
+<div class="tabs" id="mainTabs">
+  <div class="tab active" data-tab="overview">Overview</div>
+  <div class="tab" data-tab="list">LIST</div>
+  <div class="tab" data-tab="put">PUT</div>
+  <div class="tab" data-tab="get">GET</div>
+  <div class="tab" data-tab="head">HEAD</div>
+  <div class="tab" data-tab="delete">DELETE</div>
+  <div class="tab" data-tab="consistency">Consistency</div>
+  <div class="tab" data-tab="mixed">Mixed</div>
+  <div class="more-wrap">
+    <button class="more-btn" id="moreBtn">
+      More
+      <svg viewBox="0 0 20 20"><path d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z"/></svg>
+    </button>
+    <div class="more-menu" id="moreMenu">
+      <div class="more-item" data-tab="scenarios"><span class="mi-icon mi-amber">▶</span> Scenarios</div>
+      <div class="more-item" data-tab="deepdive"><span class="mi-icon mi-purple">◉</span> Deep Dive</div>
+      <div class="more-item" data-tab="arch"><span class="mi-icon mi-cyan">◈</span> Architecture</div>
+      <div class="more-item" data-tab="iopath"><span class="mi-icon mi-green">⇄</span> I/O Path</div>
+      <div class="more-item" data-tab="setup"><span class="mi-icon mi-blue">⚙</span> Test Setup</div>
+      <div class="more-item" data-tab="capacity"><span class="mi-icon mi-green">📐</span> 2 GB/s Feasibility</div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════════════════ -->
+<!--  CONTENT                                                                   -->
+<!-- ═══════════════════════════════════════════════════════════════════════════ -->
+<div class="content">
+
+<!-- ─── OVERVIEW TAB ──────────────────────────────────────────────────────── -->
+<div class="tab-panel active" id="panel-overview">
+  <div class="section-title">Verdict at a Glance</div>
+  <div class="verdict-bar">
+    <div class="seg-rustfs" style="width:50%"></div>
+    <div class="seg-ozone" style="width:42%"></div>
+    <div class="seg-tie" style="width:8%"></div>
+  </div>
+  <div class="verdict-labels">
+    <span><span class="dot dot-rustfs" style="display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:4px"></span>RustFs wins 6/12</span>
+    <span><span class="dot dot-ozone" style="display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:4px"></span>Ozone wins 5/12</span>
+    <span style="color:var(--amber)">Tie 1/12</span>
+  </div>
+
+  <div class="grid grid-4" style="margin-top:24px">
+    <div class="card">
+      <h3>LIST</h3>
+      <div class="card-value" style="color:var(--blue)">Ozone</div>
+      <div class="card-label">20-60x faster metadata listing</div>
+    </div>
+    <div class="card">
+      <h3>PUT</h3>
+      <div class="card-value" style="color:var(--green)">RustFs</div>
+      <div class="card-label">20-35% faster, zero failures</div>
+    </div>
+    <div class="card">
+      <h3>GET (low c)</h3>
+      <div class="card-value" style="color:var(--green)">RustFs</div>
+      <div class="card-label">1.3-1.7x at c1-c4</div>
+    </div>
+    <div class="card">
+      <h3>GET (high c)</h3>
+      <div class="card-value" style="color:var(--blue)">Ozone</div>
+      <div class="card-label">5x faster at c64</div>
+    </div>
+    <div class="card">
+      <h3>HEAD</h3>
+      <div class="card-value" style="color:var(--blue)">Ozone</div>
+      <div class="card-label">1.5-6.5x faster at scale</div>
+    </div>
+    <div class="card">
+      <h3>DELETE</h3>
+      <div class="card-value" style="color:var(--blue)">Ozone</div>
+      <div class="card-label">3x faster at c16</div>
+    </div>
+    <div class="card">
+      <h3>Consistency</h3>
+      <div class="card-value" style="color:var(--green)">RustFs</div>
+      <div class="card-label">100% read-after-write</div>
+    </div>
+    <div class="card">
+      <h3>Soak (1hr)</h3>
+      <div class="card-value" style="color:var(--amber)">Mixed</div>
+      <div class="card-label">RustFs 100% reliable (186 ops/s); Ozone 981 successful ops/s (5.3x) but 20% failures</div>
+    </div>
+  </div>
+
+  <!-- Overview Charts -->
+  <div class="section-title">Throughput Comparison — Small Files (3MB)</div>
+  <div class="legend" id="overviewLegend"></div>
+  <div class="grid grid-2">
+    <div class="card"><h3>Operations per Second — PUT small</h3><div class="chart-wrap"><canvas id="chartOverviewPut"></canvas></div></div>
+    <div class="card"><h3>Operations per Second — GET small</h3><div class="chart-wrap"><canvas id="chartOverviewGet"></canvas></div></div>
+    <div class="card"><h3>Operations per Second — HEAD small</h3><div class="chart-wrap"><canvas id="chartOverviewHead"></canvas></div></div>
+    <div class="card"><h3>Operations per Second — LIST tiny</h3><div class="chart-wrap"><canvas id="chartOverviewList"></canvas></div></div>
+  </div>
+
+  <div class="section-title">Complete Scenario Summary</div>
+  <div style="overflow-x:auto">
+    <table class="cmp-table" id="summaryTable">
+      <thead>
+        <tr>
+          <th>Scenario</th>
+          <th>RustFs Path ops/s</th>
+          <th>RustFs IS ops/s</th>
+          <th>Ozone Path ops/s</th>
+          <th>Ozone IS ops/s</th>
+          <th>Winner</th>
+          <th>Magnitude</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ─── LIST TAB ──────────────────────────────────────────────────────────── -->
+<div class="tab-panel" id="panel-list">
+  <div class="section-title">LIST Operations — Ozone 20-60x Faster</div>
+  <div class="card" style="margin-bottom:20px;border-left:3px solid var(--amber)">
+    <h3 style="color:var(--amber)">Test Setup: 1,000 Pre-Seeded Objects</h3>
+    <p style="font-size:13px;margin:6px 0">LIST benchmarks run against <strong>1,000 zero-byte objects</strong> under prefix <code>perf-list-seed/obj-00000</code> → <code>obj-00999</code>. Each LIST call returns all 1,000 objects in a single page (<code>maxKeys=1000</code>). Object size tiers (tiny→xlarge) don't affect LIST — it's purely metadata.</p>
+    <p style="font-size:12px;color:var(--text-dim);margin-top:6px"><strong>Observation:</strong> Even with only 1,000 objects, RustFs only manages 4-7 ops/s — the metacache doesn't eliminate the overhead of cross-drive directory walking. The benchmark measures this specific scale; results at larger object counts were not tested.</p>
+    <p style="font-size:12px;margin-top:10px;padding:8px 12px;background:rgba(52,211,153,.08);border-radius:6px"><strong style="color:var(--green)">💡 Optimization Tip — Reduce LIST Scope for RustFs:</strong> Since RustFs walks filesystem directories, you can reduce the scan scope by:<br>
+    • <strong>Prefix partitioning:</strong> Use hierarchical prefixes (e.g., <code>/photos/2024/01/</code> instead of flat <code>/photos/</code>) — RustFs only walks the subdirectory matching the prefix<br>
+    • <strong>Multiple buckets:</strong> Split objects across buckets by tenant/category — each bucket is a separate directory tree, so listing one bucket doesn't scan others<br>
+    • <strong>Metacache warmth:</strong> Repeated LISTs on the same prefix are served from RustFs's S2-compressed metacache — the first call is slow, subsequent calls are faster<br>
+    <span style="color:var(--text-dim)">For Ozone, these optimizations provide minimal benefit — RocksDB's sorted key seek is already O(log N) regardless of how objects are organized.</span></p>
+  </div>
+  <div class="grid grid-2">
+    <div class="card"><h3>LIST ops/s by Concurrency (tiny objects)</h3><div class="chart-wrap"><canvas id="chartListTiny"></canvas></div></div>
+    <div class="card"><h3>LIST p50 Latency (ms) — tiny</h3><div class="chart-wrap"><canvas id="chartListLatency"></canvas></div></div>
+  </div>
+
+  <div class="arch-section">
+    <h2>Why the 20-60x Gap?</h2>
+    <div class="arch-compare">
+      <div class="arch-card">
+        <h4><span class="dot dot-rustfs"></span> RustFs (MinIO-style)</h4>
+        <pre>LIST request arrives at any node
+  → walk filesystem dirs across ALL drives in ALL sets
+  → readdir() syscalls for each directory
+  → filter results by prefix
+  → sort and paginate
+  → return max 1000 objects</pre>
+        <ul>
+          <li><span class="tag tag-red">O(N) initial walk</span> First LIST walks filesystem dirs via readdir() syscalls across all drives</li>
+          <li><span class="tag tag-red">No persistent index</span> Filesystem directory structure IS the only source of truth</li>
+          <li><span class="tag tag-amber">Metacache</span> Results cached as S2-compressed blocks in .minio.sys — subsequent LISTs stream from cache</li>
+          <li><span class="tag tag-red">Cold LIST = slow</span> Cache miss → full directory walk; cache hit → fast. Benchmark measures cold performance</li>
+          <li><span class="tag tag-red">Fan-out</span> Must query multiple nodes (objects hash-distributed across erasure sets)</li>
+        </ul>
+      </div>
+      <div class="arch-card">
+        <h4><span class="dot dot-ozone"></span> Apache Ozone</h4>
+        <pre>LIST request → S3 Gateway → OM lookupKey
+  → RocksDB iterator.seek(prefix)
+  → sequential forward scan (sorted keys)
+  → stop at maxKeys or prefix mismatch
+  → return page + continuation token</pre>
+        <ul>
+          <li><span class="tag tag-green">O(log N + K)</span> Seek to prefix, scan K results — independent of total object count</li>
+          <li><span class="tag tag-green">RocksDB</span> Sorted LSM tree — keys with same prefix are physically adjacent</li>
+          <li><span class="tag tag-green">Block cache</span> Hot SST blocks stay in memory — zero disk I/O for repeated scans</li>
+          <li><span class="tag tag-green">Concurrent</span> Each request gets its own RocksDB iterator (lock-free MVCC)</li>
+          <li><span class="tag tag-green">Single node</span> OM has the complete index — no fan-out needed</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <div class="section-title">Detailed Numbers</div>
+  <div style="overflow-x:auto">
+    <table class="cmp-table" id="listTable">
+      <thead><tr><th>Scenario</th><th>RustFs Path</th><th>RustFs IS</th><th>Ozone Path</th><th>Ozone IS</th><th>p50 RustFs (ms)</th><th>p50 Ozone (ms)</th></tr></thead>
+      <tbody></tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ─── PUT TAB ───────────────────────────────────────────────────────────── -->
+<div class="tab-panel" id="panel-put">
+  <div class="section-title">PUT Operations — Both Use EC, RustFs 20-35% Faster (No OM Raft Overhead)</div>
+  <div class="grid grid-2">
+    <div class="card"><h3>PUT ops/s — Small (3MB)</h3><div class="chart-wrap"><canvas id="chartPutSmall"></canvas></div></div>
+    <div class="card"><h3>PUT p99 Latency (ms) — Small</h3><div class="chart-wrap"><canvas id="chartPutLatency"></canvas></div></div>
+    <div class="card"><h3>PUT ops/s — Medium (10MB)</h3><div class="chart-wrap"><canvas id="chartPutMedium"></canvas></div></div>
+    <div class="card"><h3>PUT Success Rate — Medium (10MB)</h3><div class="chart-wrap"><canvas id="chartPutSuccess"></canvas></div></div>
+    <div class="card"><h3>PUT ops/s — Large (64MB)</h3><div class="chart-wrap"><canvas id="chartPutLarge"></canvas></div></div>
+    <div class="card"><h3>PUT Success Rate — Large (64MB)</h3><div class="chart-wrap"><canvas id="chartPutLargeSuccess"></canvas></div></div>
+  </div>
+
+  <div class="arch-section">
+    <h2>Write Path Architecture</h2>
+    <div class="arch-compare">
+      <div class="arch-card">
+        <h4><span class="dot dot-rustfs"></span> RustFs Write Path</h4>
+        <pre>HTTP PUT → hash(key) → select erasure Set
+→ Reed-Solomon encode (1MiB blocks)
+→ parallel write shards to drives in Set
+→ write xl.meta atomically per drive
+→ quorum ACK (data+1 drives) → fdatasync
+→ return 200</pre>
+        <ul>
+          <li><span class="tag tag-green">No coordination</span> No Raft, no openKey/commitKey round-trips</li>
+          <li><span class="tag tag-green">Parallel shards</span> All erasure shards written simultaneously</li>
+          <li><span class="tag tag-green">1 network hop</span> Client → any node, shards to local drives</li>
+          <li><span class="tag tag-green">0% failures</span> No Raft pipeline to stall or timeout</li>
+          <li><span class="tag tag-amber">EC overhead</span> Reed-Solomon encoding uses CPU</li>
+        </ul>
+      </div>
+      <div class="arch-card">
+        <h4><span class="dot dot-ozone"></span> Ozone Write Path (EC RS-6-3)</h4>
+        <pre>HTTP PUT → S3 Gateway
+→ OM openKey (Ratis WAL commit)
+→ SCM allocate EC block group (9 blocks across DNs)
+→ ECKeyOutputStream: RS 6+3 encode (1024KB stripe)
+→ parallel write 9 chunks across 3 datanodes
+  (3 chunks per DN × 3 racks)
+→ OM commitKey (Ratis WAL commit)
+→ return 200</pre>
+        <ul>
+          <li><span class="tag tag-red">2 Raft round-trips</span> openKey + commitKey through OM Raft group (all OM mutations go through Ratis when HA enabled)</li>
+          <li><span class="tag tag-green">Parallel EC writes</span> All 9 chunks (6 data + 3 parity) written simultaneously — NOT sequential Raft chain</li>
+          <li><span class="tag tag-red">4+ network hops</span> Client → S3G → OM → ECKeyOutputStream → 3 DNs → OM</li>
+          <li><span class="tag tag-red">7-34% failures</span> EC stripe coordination failures under load — partial writes require cleanup</li>
+          <li><span class="tag tag-amber">EC overhead</span> RS 6+3 encoding on client-side (S3G) + 1024KB stripe buffering</li>
+          <li><span class="tag tag-amber">9 block locations</span> SCM must allocate 9 blocks across 3 racks — more allocation overhead than RATIS/3</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ─── GET TAB ───────────────────────────────────────────────────────────── -->
+<div class="tab-panel" id="panel-get">
+  <div class="section-title">GET Operations — Both EC Fan-Out, But Ozone 5x at c64 (Page Cache Advantage)</div>
+  <div class="grid grid-2">
+    <div class="card"><h3>GET ops/s — Small (3MB)</h3><div class="chart-wrap"><canvas id="chartGetSmall"></canvas></div></div>
+    <div class="card"><h3>GET p50 Latency (ms) — Small</h3><div class="chart-wrap"><canvas id="chartGetLatency"></canvas></div></div>
+    <div class="card"><h3>GET ops/s — Medium (10MB)</h3><div class="chart-wrap"><canvas id="chartGetMedium"></canvas></div></div>
+    <div class="card"><h3>GET ops/s — Large (64MB)</h3><div class="chart-wrap"><canvas id="chartGetLarge"></canvas></div></div>
+  </div>
+
+  <div class="arch-section">
+    <h2>Read Path Architecture</h2>
+    <div class="arch-compare">
+      <div class="arch-card">
+        <h4><span class="dot dot-rustfs"></span> RustFs Read Path</h4>
+        <pre>HTTP GET → hash(key) → find erasure Set
+→ read xl.meta from quorum drives
+→ read data_blocks shards in parallel
+→ HighwayHash256 checksum verify per shard
+→ Reed-Solomon decode → stream to client</pre>
+        <ul>
+          <li><span class="tag tag-green">No metadata lookup</span> Hash directly determines data location</li>
+          <li><span class="tag tag-red">Multi-drive fan-out</span> Must read 4+ drives per GET (EC:4+4)</li>
+          <li><span class="tag tag-red">O_DIRECT</span> Bypasses OS page cache — every read hits disk</li>
+          <li><span class="tag tag-red">c64 = 256+ disk reads</span> Drives saturate, throughput degrades c16→c64</li>
+        </ul>
+      </div>
+      <div class="arch-card">
+        <h4><span class="dot dot-ozone"></span> Ozone Read Path (EC RS-6-3)</h4>
+        <pre>HTTP GET → S3 Gateway → OM lookupKey
+→ get EC block group locations (9 containers)
+→ ECKeyInputStream: read 6 data chunks sequentially
+  from 6 block locations across 3 datanodes
+  (skip 3 parity unless data chunk unavailable)
+  (parallel reads used in degraded/reconstruction mode)
+→ CRC32 verify per chunk → reassemble → stream</pre>
+        <ul>
+          <li><span class="tag tag-amber">OM round-trip</span> ~3-5ms metadata lookup overhead per GET</li>
+          <li><span class="tag tag-amber">6-block sequential read</span> Reads 6 data chunks from 6 locations across 3 datanodes; each chunk is 1/6th of object</li>
+          <li><span class="tag tag-green">Spread across DNs</span> 6 reads across 3 datanodes — each DN serves ~2 chunks, load balanced</li>
+          <li><span class="tag tag-green">OS page cache</span> Hot chunks served from memory on each DN</li>
+          <li><span class="tag tag-green">Smaller per-read I/O</span> Each chunk ~500KB for a 3MB object vs ~750KB shards in RustFs (4+4)</li>
+          <li><span class="tag tag-green">c64 scales</span> 3 DNs × page cache absorbs concurrent reads; RustFs O_DIRECT saturates local drives</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ─── HEAD TAB ──────────────────────────────────────────────────────────── -->
+<div class="tab-panel" id="panel-head">
+  <div class="section-title">HEAD Operations — Ozone 1.5-6.5x Faster</div>
+  <div class="grid grid-2">
+    <div class="card"><h3>HEAD ops/s — Small</h3><div class="chart-wrap"><canvas id="chartHeadOps"></canvas></div></div>
+    <div class="card"><h3>HEAD p50 Latency (ms)</h3><div class="chart-wrap"><canvas id="chartHeadLatency"></canvas></div></div>
+  </div>
+  <div class="arch-section">
+    <h2>Metadata Lookup Architecture</h2>
+    <div class="arch-compare">
+      <div class="arch-card">
+        <h4><span class="dot dot-rustfs"></span> RustFs HEAD</h4>
+        <pre>HTTP HEAD → hash(key) → find erasure Set
+→ read xl.meta from ALL drives in Set
+→ quorum vote → pick most recent valid
+→ return metadata headers</pre>
+        <ul>
+          <li><span class="tag tag-red">8 disk reads</span> xl.meta read from every drive in erasure set</li>
+          <li><span class="tag tag-red">c64 = 512 disk ops</span> I/O saturation, p50 jumps to 39ms</li>
+          <li><span class="tag tag-red">Plateaus at ~1,590 ops/s</span> beyond c16</li>
+        </ul>
+      </div>
+      <div class="arch-card">
+        <h4><span class="dot dot-ozone"></span> Ozone HEAD</h4>
+        <pre>HTTP HEAD → S3 Gateway
+→ OM lookupKey (single RocksDB get())
+→ return metadata from RocksDB block cache
+→ NO datanode involvement</pre>
+        <ul>
+          <li><span class="tag tag-green">1 lookup</span> Single RocksDB point query — usually from memory</li>
+          <li><span class="tag tag-green">0 disk I/O</span> Block cache keeps hot metadata in RAM</li>
+          <li><span class="tag tag-green">Scales to 10K ops/s</span> Linear scaling, p50 stays at 5.9ms at c64</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ─── DELETE TAB ─────────────────────────────────────────────────────────── -->
+<div class="tab-panel" id="panel-delete">
+  <div class="section-title">DELETE Operations — RustFs Faster c1, Ozone 3x at c16</div>
+  <div class="grid grid-2">
+    <div class="card"><h3>DELETE ops/s — Small</h3><div class="chart-wrap"><canvas id="chartDeleteOps"></canvas></div></div>
+    <div class="card"><h3>DELETE p50 Latency (ms)</h3><div class="chart-wrap"><canvas id="chartDeleteLatency"></canvas></div></div>
+  </div>
+  <div class="arch-section">
+    <h2>Delete Path Architecture</h2>
+    <div class="arch-compare">
+      <div class="arch-card">
+        <h4><span class="dot dot-rustfs"></span> RustFs DELETE</h4>
+        <pre>HTTP DELETE → hash(key) → find erasure Set
+→ write DeleteMarker to xl.meta on ALL drives
+  OR move data to .minio.sys/tmp/.trash
+→ background cleanup every 5min</pre>
+        <ul>
+          <li><span class="tag tag-amber">8 disk writes</span> xl.meta updated on every drive in set</li>
+          <li><span class="tag tag-green">Fast at c1</span> Parallel writes < Raft consensus latency</li>
+          <li><span class="tag tag-red">c16 = 128 writes</span> Disk write amplification, slows down</li>
+        </ul>
+      </div>
+      <div class="arch-card">
+        <h4><span class="dot dot-ozone"></span> Ozone DELETE</h4>
+        <pre>HTTP DELETE → S3 Gateway → OM deleteKey
+→ remove from keyTable + add to deletedTable
+→ return 200 immediately
+→ background: KeyDeletingService (60s)
+  → SCM → Datanodes reclaim blocks</pre>
+        <ul>
+          <li><span class="tag tag-green">1 RocksDB write</span> Move key from keyTable to deletedTable — single WriteBatch (our test: no Raft, direct RocksDB)</li>
+          <li><span class="tag tag-green">Lazy GC</span> Actual block deletion deferred to background (KeyDeletingService, ~60s interval)</li>
+          <li><span class="tag tag-amber">OM overhead at c1</span> RPC to OM + RocksDB write > raw local disk write at low concurrency</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <div class="card" style="margin-top:20px;border-left:3px solid var(--amber)">
+    <h3 style="color:var(--amber)">⚠ Ozone DELETE — The Deferred Cost</h3>
+    <p style="font-size:13px;margin:8px 0">Ozone's 3x DELETE speed advantage is partly <strong>borrowed from the future</strong>. The benchmark measures time-to-ACK, but Ozone defers the actual work:</p>
+    <pre style="background:var(--bg);padding:14px;border-radius:6px;font-size:12px;line-height:1.7;color:var(--text-dim);margin:10px 0;font-family:'JetBrains Mono','SF Mono',monospace">
+DELETE request → OM deleteKey()
+  Step 1: Remove key from keyTable (RocksDB)     ← benchmarked (fast)
+  Step 2: Add key to deletedTable (RocksDB)       ← benchmarked (fast)
+  Step 3: Return 200 OK to client                 ← benchmark stops here
+  ──────────────────────────────────────────────
+  Step 4: KeyDeletingService scans deletedTable    ← background, every ~60s
+  Step 5: Send block delete commands to SCM        ← background
+  Step 6: SCM instructs datanodes to reclaim       ← background
+  Step 7: Datanodes delete actual EC chunks/blocks ← background, disk I/O
+  Step 8: Disk space finally freed                 ← minutes later</pre>
+    <p style="font-size:13px;margin:8px 0"><strong>Production side-effects of deferred deletion:</strong></p>
+
+    <details style="background:var(--bg);margin:10px 0">
+      <summary style="color:var(--red)"><span class="tag tag-red">GC Storm</span> Bulk deletes degrade concurrent I/O</summary>
+      <div class="detail-body">
+        <p style="font-size:13px;margin:8px 0">When you delete 1 million objects, all DELETEs return 200 OK in seconds. But the background now has a problem:</p>
+        <pre style="background:var(--surface);padding:12px;border-radius:6px;font-size:11.5px;line-height:1.6;color:var(--text-dim);font-family:'JetBrains Mono','SF Mono',monospace">KeyDeletingService wakes up (every ~60s)
+  → finds 1,000,000 entries in deletedTable
+  → sends 1,000,000 block-delete RPCs to SCM
+    → SCM sends commands to 3 datanodes per block
+      → each DN does actual disk I/O to delete EC chunks
+
+Meanwhile, your normal traffic is also running:
+  PUT (needs SCM to allocate blocks)  ← SCM busy processing deletes
+  GET (needs DN disk I/O)             ← DNs busy deleting blocks
+  LIST (needs OM RocksDB)             ← OM compacting deletedTable</pre>
+        <p style="font-size:12.5px;margin:8px 0">All three components (OM, SCM, DNs) are doing delete cleanup <strong>on top of</strong> serving live traffic. PUT latency spikes because SCM is processing delete commands instead of allocating blocks. GET latency spikes because datanodes are doing delete I/O on the same disks serving reads.</p>
+        <p style="font-size:12px;color:var(--text-dim)"><strong>RustFs:</strong> No central SCM — each node cleans its own trash independently, so delete GC doesn't create a single-coordinator bottleneck.</p>
+      </div>
+    </details>
+
+    <details style="background:var(--bg);margin:10px 0">
+      <summary style="color:var(--amber)"><span class="tag tag-amber">deletedTable Bloat</span> High-churn workloads grow OM memory</summary>
+      <div class="detail-body">
+        <p style="font-size:13px;margin:8px 0">Workloads that constantly create and delete objects (e.g., Spark shuffle files, temp processing artifacts) cause the deletedTable to grow:</p>
+        <pre style="background:var(--surface);padding:12px;border-radius:6px;font-size:11.5px;line-height:1.6;color:var(--text-dim);font-family:'JetBrains Mono','SF Mono',monospace">Every hour: write 100K temp objects → delete 100K temp objects
+  keys move: keyTable → deletedTable → (GC cleans eventually)
+
+If GC can't keep up with churn rate:
+  Hour 1:  deletedTable: 100K entries (GC cleaned 80K, 20K pending)
+  Hour 2:  deletedTable: 120K entries (backlog growing)
+  Hour 5:  deletedTable: 300K entries
+  Hour 24: deletedTable: millions of entries</pre>
+        <p style="font-size:12.5px;margin:8px 0">This matters because:</p>
+        <ul style="font-size:12.5px">
+          <li><strong>deletedTable lives in OM's RocksDB</strong> — more entries = more memory for block cache, more SST files, more compaction CPU</li>
+          <li><strong>KeyDeletingService scans the table every ~60s</strong> — scanning millions of rows burns OM CPU constantly</li>
+          <li><strong>RocksDB compaction</strong> triggered by the growing table causes periodic latency spikes on ALL OM operations (LIST, HEAD, lookupKey)</li>
+        </ul>
+        <p style="font-size:12px;color:var(--text-dim)">Essentially a <strong>metadata memory leak</strong> — the data is gone from the user's perspective, but cleanup bookkeeping accumulates and degrades OM performance.</p>
+      </div>
+    </details>
+
+    <details style="background:var(--bg);margin:10px 0">
+      <summary style="color:var(--amber)"><span class="tag tag-amber">Disk Space Lag</span> Deleted data still occupies disk for minutes</summary>
+      <div class="detail-body">
+        <pre style="background:var(--surface);padding:12px;border-radius:6px;font-size:11.5px;line-height:1.6;color:var(--text-dim);font-family:'JetBrains Mono','SF Mono',monospace">Time 0:00  DELETE returns 200 OK
+           → key removed from keyTable (invisible to users ✓)
+           → actual EC chunks still on disk (9 chunks per object)
+
+Time 0:00 - 5:00  (waiting for KeyDeletingService)
+           → LIST won't show the object  (correct ✓)
+           → GET returns 404             (correct ✓)
+           → df -h on datanodes: still shows disk used  (confusing!)
+           → Ozone usage reporting: still counts the space
+
+Time 5:00+  KeyDeletingService → SCM → DNs delete chunks
+           → disk space finally freed</pre>
+        <p style="font-size:12.5px;margin:8px 0"><strong>Production impact:</strong></p>
+        <ul style="font-size:12.5px">
+          <li>You delete 500GB of old data → all DELETEs succeed → check disk → <strong>still shows full</strong></li>
+          <li><strong>Disk-full alerts keep firing</strong> during the GC lag window even though you've already deleted data</li>
+          <li><strong>Auto-scaling based on disk usage</strong> won't trigger correctly — it sees "full" disk until GC catches up</li>
+          <li>Capacity planning must account for this: <strong>effective free space = reported free + pending deletions in deletedTable</strong></li>
+        </ul>
+      </div>
+    </details>
+
+    <p style="font-size:12px;margin-top:10px;padding:8px 12px;background:rgba(52,211,153,.08);border-radius:6px"><strong style="color:var(--green)">💡 RustFs comparison:</strong> RustFs also defers deletion — tombstones in xl.meta + data moved to <code>.minio.sys/tmp/.trash/</code> with cleanup every ~5 minutes. Similar disk-space lag, but RustFs has no central coordinator (SCM) that can become a bottleneck during GC storms. Each node cleans its own trash independently.</p>
+  </div>
+</div>
+
+<!-- ─── CONSISTENCY TAB ───────────────────────────────────────────────────── -->
+<div class="tab-panel" id="panel-consistency">
+  <div class="section-title">Consistency — RustFs Strong, Ozone Eventual</div>
+  <div class="grid grid-3">
+    <div class="card">
+      <h3>Read-After-Write</h3>
+      <div style="display:flex;gap:14px;align-items:baseline">
+        <div><div class="card-value ok">100%</div><div class="card-label">RustFs</div></div>
+        <div><div class="card-value fail">0%</div><div class="card-label">Ozone</div></div>
+      </div>
+    </div>
+    <div class="card">
+      <h3>Overwrite Storm c16</h3>
+      <div style="display:flex;gap:14px;align-items:baseline">
+        <div><div class="card-value ok">~93%</div><div class="card-label">RustFs</div></div>
+        <div><div class="card-value fail">0%</div><div class="card-label">Ozone</div></div>
+      </div>
+    </div>
+    <div class="card">
+      <h3>Cold Read c1</h3>
+      <div style="display:flex;gap:14px;align-items:baseline">
+        <div><div class="card-value ok">100%</div><div class="card-label">RustFs</div></div>
+        <div><div class="card-value fail">0-100%</div><div class="card-label">Ozone</div></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="grid grid-2" style="margin-top:20px">
+    <div class="card"><h3>Read-After-Write Success Rate</h3><div class="chart-wrap"><canvas id="chartRAW"></canvas></div></div>
+    <div class="card"><h3>Overwrite Storm Success Rate</h3><div class="chart-wrap"><canvas id="chartOverwrite"></canvas></div></div>
+  </div>
+
+  <div class="arch-section">
+    <h2>Why The Consistency Gap?</h2>
+    <div class="arch-compare">
+      <div class="arch-card">
+        <h4><span class="dot dot-rustfs"></span> RustFs — Strict Consistency</h4>
+        <pre>PUT → fdatasync all shards → quorum ACK → return 200
+GET → hash(key) → reads SAME drives
+→ data is always there after PUT returns</pre>
+        <ul>
+          <li><span class="tag tag-green">fdatasync</span> Data durably on disk before ACK</li>
+          <li><span class="tag tag-green">Same drives</span> GET hashes to exact same erasure set as PUT</li>
+          <li><span class="tag tag-green">No metadata layer</span> No index that needs to "catch up"</li>
+          <li><span class="tag tag-amber">Requires XFS/ZFS</span> ext4 breaks O_DIRECT/fdatasync semantics</li>
+        </ul>
+      </div>
+      <div class="arch-card">
+        <h4><span class="dot dot-ozone"></span> Ozone — The Full Write-to-Read Pipeline</h4>
+        <pre>PUT → S3G → single OM (our test: no HA):
+  1. Ratis WAL append (single-node group)
+  2. applyTransaction (possibly async):
+     → validateAndUpdateCache()
+     → table cache updated ← may lag WAL commit
+  3. Response added to OzoneManagerDoubleBuffer
+  4. Background: double-buffer flushes batch to RocksDB
+  5. After flush: cache entries cleaned up
+
+GET → S3G → same single OM:
+  → reads from table cache + RocksDB
+  → BUT: if applyTransaction hasn't run yet,
+    cache is empty AND RocksDB not flushed
+  → Result: 404 Not Found</pre>
+        <ul>
+          <li><span class="tag tag-green">Table cache</span> On a SINGLE OM, cache makes writes visible immediately — but our benchmark measured 0% read-after-write success via S3G</li>
+          <li><span class="tag tag-amber">Double-buffer</span> Batches RocksDB writes for performance — NOT the root cause of consistency issues</li>
+          <li><span class="tag tag-red">Ratis async apply</span> Single-node Ratis may return success before applyTransaction updates cache (see deep dive below)</li>
+          <li><span class="tag tag-red">Table cache bugs</span> Known issues: no rollback on error (HDDS-11443), cache leaks (HDDS-13363), cleanup desync (HDDS-13365)</li>
+          <li><span class="tag tag-red">Overwrite: optimistic lock</span> expectedGeneration rejects concurrent writers</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <!-- Deep Dive: The REAL root cause -->
+  <div class="card" style="margin-top:20px;border-left:3px solid var(--purple)">
+    <h3 style="color:var(--purple)">Deep Dive: OzoneManagerDoubleBuffer &amp; Table Cache — Why 0% RAW With Single OM?</h3>
+    <p style="font-size:13px;margin:10px 0"><strong>Test setup: Single OM (no HA, no followers).</strong> This eliminates multi-OM routing as a cause. With only one OM, every PUT and GET goes to the same OM instance — yet read-after-write still fails 100% of the time. The root cause must be within the single OM + S3G path.</p>
+  </div>
+
+  <details style="background:var(--surface);margin-bottom:14px">
+    <summary><span class="tag tag-blue">Step 1</span> How the Double Buffer works (HDDS-1512)</summary>
+    <div class="detail-body">
+      <pre style="background:var(--bg);padding:12px;border-radius:6px;font-size:11.5px;line-height:1.7;color:var(--text-dim);font-family:'JetBrains Mono','SF Mono',monospace">
+OzoneManagerDoubleBuffer (modeled after HDFS EditsDoubleBuffer):
+
+  ┌────────────────────┐     ┌────────────────────┐
+  │   currentBuffer    │     │    readyBuffer     │
+  │                    │     │                    │
+  │  tx-101 (openKey)  │     │  tx-098 (putKey)   │ → flushing
+  │  tx-102 (commit)   │     │  tx-099 (delete)   │   to RocksDB
+  │  tx-103 (delete)   │     │  tx-100 (commit)   │   as single
+  │  (accumulating...) │     │                    │   WriteBatch
+  └────────────────────┘     └────────────────────┘
+           ↑                          ↓
+    new transactions           background thread
+    added here                 flushes, then SWAPS
+                               the two buffers
+
+  Key point: If flush fails → that OM is TERMINATED
+  (prevents DB divergence)</pre>
+      <ul style="font-size:12.5px">
+        <li>New write transaction responses accumulate in <code>currentBuffer</code></li>
+        <li>Background daemon swaps buffers periodically</li>
+        <li>The <code>readyBuffer</code> is flushed to RocksDB as a single atomic <code>WriteBatch</code></li>
+        <li>Only one flush outstanding at a time — simple and safe</li>
+      </ul>
+    </div>
+  </details>
+
+  <details style="background:var(--surface);margin-bottom:14px">
+    <summary><span class="tag tag-green">Step 2</span> The Table Cache — designed to guarantee read-after-write on same OM</summary>
+    <div class="detail-body">
+      <pre style="background:var(--bg);padding:12px;border-radius:6px;font-size:11.5px;line-height:1.7;color:var(--text-dim);font-family:'JetBrains Mono','SF Mono',monospace">
+Write path (on the single OM):
+
+  Ratis applyTransaction:
+    → validateAndUpdateCache()
+      → Table.addCacheEntry(key, value)    ← IMMEDIATELY visible
+      → build OMClientResponse
+    → add response to double-buffer        ← will flush to RocksDB later
+
+Read path (on the SAME OM):
+
+  OM.lookupKey("my-object"):
+    → check table cache FIRST             ← should find the entry ✓
+    → if not in cache, check RocksDB
+    → cache entries take precedence
+
+  In theory: on a single OM, read-after-write SHOULD work.
+  The table cache bridges the double-buffer gap by design.
+  Yet our benchmark measures 0% success. Why?</pre>
+    </div>
+  </details>
+
+  <details style="background:var(--surface);margin-bottom:14px" open>
+    <summary style="color:var(--red)"><span class="tag tag-red">Step 3</span> Why 0% RAW with a SINGLE OM — Possible Root Causes</summary>
+    <div class="detail-body">
+      <div class="card" style="border-left:3px solid var(--red);margin-bottom:12px">
+        <p style="font-size:13px"><strong>⚠ Our test uses a single OM — no Raft followers, no multi-OM routing.</strong> The multi-OM routing explanation commonly cited for Ozone's RAW failures does <strong>not apply</strong> here. The failure must come from within the S3G → single OM path.</p>
+      </div>
+
+      <p style="font-size:13px;margin:8px 0;font-weight:600">Possible Cause 1: S3 Gateway Connection Pooling</p>
+      <pre style="background:var(--bg);padding:12px;border-radius:6px;font-size:11.5px;line-height:1.7;color:var(--text-dim);font-family:'JetBrains Mono','SF Mono',monospace">
+S3 Gateway manages OzoneClient connections:
+
+  PUT /my-object → S3G → OzoneClient-A → OM (single)
+    → OM: applyTransaction → cache updated → 200 OK
+    → S3G returns OzoneClient-A to pool
+
+  GET /my-object → S3G → OzoneClient-B (different client from pool!)
+    → OzoneClient-B may use a DIFFERENT RPC connection
+    → Possible: OM RPC layer returns before cache is updated
+    → Or: S3G creates a fresh OzoneClient that doesn't see cache
+
+  Even with single OM, connection pool creates separate sessions.
+  Each session may see a different snapshot of the OM state.</pre>
+
+      <p style="font-size:13px;margin:16px 0 8px;font-weight:600">Possible Cause 2: Raft Single-Node Still Has Async Apply</p>
+      <pre style="background:var(--bg);padding:12px;border-radius:6px;font-size:11.5px;line-height:1.7;color:var(--text-dim);font-family:'JetBrains Mono','SF Mono',monospace">
+Even with single OM, Ratis still runs (leader of a 1-member group):
+
+  PUT → S3G → OM.submitRequest
+    → Ratis: append to WAL (local)
+    → Ratis: applyTransaction (async via StateMachine)
+      → validateAndUpdateCache() ← cache update happens HERE
+    → return 200 to client
+
+  The Ratis applyTransaction may execute ASYNCHRONOUSLY after
+  the WAL append returns success to the client.
+
+  Timeline:
+    t=0ms: WAL append succeeds → PUT returns 200
+    t=1ms: GET arrives → cache not yet updated (apply still pending)
+    t=2ms: applyTransaction runs → cache now has the entry
+
+  The 1ms gap is enough for 0% RAW at any concurrency.</pre>
+
+      <p style="font-size:13px;margin:16px 0 8px;font-weight:600">Possible Cause 3: Table Cache Bugs (Known Issues)</p>
+      <table class="cmp-table" style="font-size:12px">
+        <thead><tr><th>JIRA</th><th>Issue</th><th>Impact on Single OM</th></tr></thead>
+        <tbody>
+          <tr><td><a href="https://issues.apache.org/jira/browse/HDDS-11443" style="color:var(--accent)">HDDS-11443</a></td><td>Table cache has NO rollback mechanism</td><td>If validateAndUpdateCache fails after partial update, stale/incorrect entries persist</td></tr>
+          <tr><td><a href="https://issues.apache.org/jira/browse/HDDS-13363" style="color:var(--accent)">HDDS-13363</a></td><td>Table cache entries leak (not cleaned up)</td><td>Cache grows unbounded → missed entries possible during cleanup races</td></tr>
+          <tr><td><a href="https://issues.apache.org/jira/browse/HDDS-13365" style="color:var(--accent)">HDDS-13365</a></td><td>CleanupTableInfo annotation out of sync</td><td>Cache cleanup misses tables → stale entries persist across flushes</td></tr>
+        </tbody>
+      </table>
+
+      <p style="font-size:13px;margin:16px 0 8px;font-weight:600">Possible Cause 4: Double Buffer Edge Cases</p>
+      <table class="cmp-table" style="font-size:12px">
+        <thead><tr><th>JIRA</th><th>Issue</th><th>Impact</th></tr></thead>
+        <tbody>
+          <tr><td><a href="https://issues.apache.org/jira/browse/HDDS-10275" style="color:var(--accent)">HDDS-10275</a></td><td>Double buffer not flushing at all</td><td>Cache entries never cleaned → cache grows forever → memory exhaustion</td></tr>
+          <tr><td><a href="https://issues.apache.org/jira/browse/HDDS-11215" style="color:var(--accent)">HDDS-11215</a></td><td>Quota counts wrong during slow flush</td><td>Delayed flush causes state inconsistency</td></tr>
+          <tr><td><a href="https://issues.apache.org/jira/browse/HDDS-6934" style="color:var(--accent)">HDDS-6934</a></td><td>OM crashes in double buffer flush thread</td><td>NullPointerException terminates OM during FSO key deletion flush</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </details>
+
+  <div class="card" style="margin-top:14px;border-left:3px solid var(--amber)">
+    <h3 style="color:var(--amber)">Summary: Single OM — Root Cause Not Definitively Identified</h3>
+    <table class="cmp-table" style="margin-top:10px;font-size:12.5px">
+      <thead><tr><th>Component</th><th>Role in 0% RAW</th><th>Likely?</th></tr></thead>
+      <tbody>
+        <tr><td>Multi-OM routing</td><td><strong>Does NOT apply</strong> — test uses single OM, no followers</td><td><span class="tag tag-green">Eliminated</span></td></tr>
+        <tr><td>Ratis async apply</td><td>Even single-node Ratis may return 200 before applyTransaction completes (cache not yet updated when GET arrives)</td><td><span class="tag tag-red">Most Likely</span></td></tr>
+        <tr><td>S3G connection pool</td><td>Different OzoneClient instances per request may see different OM state snapshots</td><td><span class="tag tag-amber">Possible</span></td></tr>
+        <tr><td>Table cache bugs</td><td>Known issues with cache leaks, missing rollbacks, cleanup desync</td><td><span class="tag tag-amber">Possible</span></td></tr>
+        <tr><td>Double buffer itself</td><td>Async flush to RocksDB. Cache should bridge this — but only if cache is populated before GET</td><td><span class="tag tag-amber">Contributory</span></td></tr>
+      </tbody>
+    </table>
+    <p style="font-size:12px;margin-top:10px;color:var(--text-dim)"><strong>Key insight:</strong> The 0% RAW result on a <strong>single OM</strong> is more concerning than multi-OM failures, because the table cache was specifically designed to prevent this scenario. Either (a) Ratis returns success before applyTransaction updates the cache, or (b) the S3G/OzoneClient path has a read-your-writes gap that bypasses the cache. <strong>Further investigation with OM-level tracing is needed to identify the exact root cause.</strong></p>
+    <p style="font-size:12px;margin-top:6px;color:var(--text-dim)"><strong>Related JIRA:</strong> <a href="https://issues.apache.org/jira/browse/HDDS-14509" style="color:var(--accent)">HDDS-14509</a> (Ozone 2.2.0) adds configurable read consistency levels (<code>LEADER_ONLY</code>, <code>LINEARIZABLE</code>). These options were <strong>not enabled</strong> in our test — the 0% result reflects default S3G configuration on single OM.</p>
+  </div>
+
+  <!-- Scalability Bottleneck Analysis -->
+  <div class="section-title">Scalability Bottleneck — The Central Metadata Problem</div>
+
+  <div class="card" style="margin-bottom:20px;border-left:3px solid var(--red)">
+    <h3 style="color:var(--red)">Ozone's Achilles Heel: OM Becomes the Bottleneck at Scale</h3>
+    <p style="font-size:12px;padding:6px 10px;background:rgba(251,191,36,.1);border-radius:4px;margin-bottom:8px"><strong>Note:</strong> Our test uses a <strong>single OM (no Raft HA)</strong>. The Raft overhead described below applies to <strong>production Ozone deployments</strong> where OM HA is enabled (3 or 5 OMs). In our test, OM overhead is from RocksDB + double-buffer only — no Raft consensus. Production would be <em>slower</em> for writes due to added Raft round-trips.</p>
+    <p style="font-size:13px;margin:8px 0">Every single Ozone operation — PUT, GET, HEAD, LIST, DELETE — must pass through the <strong>Ozone Manager (OM)</strong>. In production, OM is replicated via Raft for HA. This creates a fundamental scaling ceiling:</p>
+    <pre style="background:var(--bg);padding:14px;border-radius:6px;font-size:12px;line-height:1.7;color:var(--text-dim);margin:10px 0;font-family:'JetBrains Mono','SF Mono',monospace">
+Ozone at scale — ALL traffic funnels through OM:
+
+  IoT sensors (10K writes/s) ──→ ┐
+  Log pipeline (50K writes/s) ──→ ├──→ S3 Gateway ──→ OM (single Raft group)
+  ML training (5K reads/s) ─────→ ├                    │
+  Analytics (2K LIST/s) ────────→ ┘                    ├→ RocksDB (one instance)
+                                                       ├→ Raft WAL (serial writes)
+                                                       └→ Table cache (bounded memory)
+
+  Total: ~67K metadata ops/s hitting ONE OM leader node
+
+  OM Leader must:
+    • Serialize all writes through Raft consensus (inherently serial)
+    • Run validateAndUpdateCache for every transaction
+    • Maintain table cache in memory
+    • Flush double-buffer to RocksDB (compaction competes with reads)
+    • Serve all lookupKey reads from cache + RocksDB
+    • Handle Raft heartbeats and follower replication</pre>
+  </div>
+
+  <div class="arch-compare">
+    <div class="arch-card">
+      <h4><span class="dot dot-ozone"></span> Ozone — Vertical Scaling Limits</h4>
+      <pre>
+Scaling options for OM:
+  ✗ Add more OM nodes? → Raft requires leader
+    for ALL writes. More followers = more
+    replication overhead, not more throughput.
+
+  ✗ Shard by bucket? → OM manages ALL buckets
+    in one RocksDB. No per-bucket OM sharding
+    without manual federated deployments.
+
+  △ OM Federation (HDDS-4879)? → Splits
+    namespace across multiple OMs. But adds
+    routing complexity and cross-OM operations
+    don't support transactions.
+
+  △ More hardware? → Bigger CPU, faster NVMe
+    for RocksDB. Linear improvement, but Raft
+    serialization is the hard ceiling.
+
+At our benchmark scale (37 PUT ops/s, 3 nodes):
+  OM is NOT the bottleneck — network and EC
+  encoding dominate.
+
+At log-ingestion scale (10K+ writes/s):
+  OM Raft serialization becomes the wall.
+  Each openKey + commitKey = 2 Raft proposals.
+  10K writes/s = 20K Raft proposals/s.
+  Typical Raft throughput: 10-50K proposals/s
+  depending on hardware → OM saturates.</pre>
+      <ul>
+        <li><span class="tag tag-red">Single writer</span> Raft leader is the only node that can propose writes — followers are read-only replicas</li>
+        <li><span class="tag tag-red">Serial consensus</span> Each write waits for majority ACK — can't pipeline beyond Raft's batch window</li>
+        <li><span class="tag tag-red">RocksDB compaction</span> Background compaction competes with foreground reads → latency spikes at scale</li>
+        <li><span class="tag tag-amber">Federation exists</span> OM Federation (sub-cluster per volume) can help, but adds operational complexity and doesn't solve per-volume hotspots</li>
+      </ul>
+    </div>
+    <div class="arch-card">
+      <h4><span class="dot dot-rustfs"></span> RustFs — Horizontal Scaling by Design</h4>
+      <pre>
+Scaling options for RustFs:
+  ✓ Add more nodes? → YES. Each node handles
+    its own requests independently. No leader.
+    More nodes = proportionally more throughput.
+
+  ✓ Add more drives? → YES. More drives per
+    node = more erasure sets = more parallel I/O.
+
+  ✓ No metadata bottleneck? → CORRECT. No
+    central metadata service. hash(key) computed
+    locally on any node. Zero coordination.
+
+At our benchmark scale (37 PUT ops/s, 3 nodes):
+  Throughput is limited by network and EC encoding,
+  same as Ozone.
+
+At log-ingestion scale (10K+ writes/s):
+  Add more nodes. 10 nodes → ~120 PUT ops/s.
+  30 nodes → ~370 PUT ops/s.
+  100 nodes → ~1,200 PUT ops/s.
+  Each node adds capacity linearly because
+  there's no shared bottleneck.
+
+  No Raft leader to saturate.
+  No RocksDB to compact.
+  No central coordinator at all.</pre>
+      <ul>
+        <li><span class="tag tag-green">No leader</span> Every node is equal — any node handles any request. No single point of saturation.</li>
+        <li><span class="tag tag-green">Linear scaling</span> Double the nodes → double the throughput. Proven by MinIO at petabyte scale.</li>
+        <li><span class="tag tag-green">No metadata overhead</span> hash(key) → drive is O(1) local computation. No network round-trip for metadata.</li>
+        <li><span class="tag tag-amber">Consistency trade-off</span> This scalability comes FROM the lack of a central metadata layer — which is also why LIST is 60x slower (no index to query).</li>
+      </ul>
+    </div>
+  </div>
+
+  <details style="background:var(--surface);margin-bottom:14px">
+    <summary style="color:var(--amber)"><span class="tag tag-amber">Real-World Example</span> Log ingestion at 100K events/second</summary>
+    <div class="detail-body">
+      <p style="font-size:13px;margin:8px 0">Consider a centralized log platform ingesting 100K log events per second, each written as a 10KB object:</p>
+      <pre style="background:var(--bg);padding:12px;border-radius:6px;font-size:11.5px;line-height:1.7;color:var(--text-dim);font-family:'JetBrains Mono','SF Mono',monospace">
+Ozone:
+  100K writes/s → 200K Raft proposals/s (openKey + commitKey each)
+  Typical OM Raft throughput: ~20-50K proposals/s on good hardware
+  → OM saturated at 10-25K writes/s (10-25% of target)
+
+  To reach 100K writes/s:
+  → Need OM Federation: split into 4-10 sub-clusters
+  → Each sub-cluster needs its own OM Raft group (3 nodes)
+  → Total: 12-30 OM nodes just for metadata
+  → Plus routing layer to direct writes to correct sub-cluster
+  → Plus cross-cluster queries for global LIST/search
+  → Operational complexity: HIGH
+
+RustFs:
+  100K writes/s ÷ ~37 ops/s per node (at c16) = ~2,700 nodes needed
+  → That's too many! But RustFs scales with concurrency:
+
+  At c64 with larger batches (64MB writes):
+  100K × 10KB = 1GB/s throughput needed
+  Each node does ~112 MB/s write throughput
+  → ~9 nodes for raw throughput
+  → Hash distribution spreads writes across all nodes evenly
+  → No coordination overhead, no Raft, no metadata service
+  → Operational complexity: LOW (just add nodes)
+
+  But: if you ever need to LIST these 100K objects/s...
+  → RustFs cannot do it (filesystem walk)
+  → LIST at this scale: 4-7 ops/s (filesystem walk)
+  → No built-in metadata index to accelerate listing</pre>
+      <p style="font-size:12.5px;margin:8px 0"><strong>The observed trade-off:</strong></p>
+      <p style="font-size:13px;padding:8px 12px;background:rgba(108,114,255,.08);border-radius:6px"><strong>Ozone:</strong> Write throughput is constrained by OM Raft serialization, but metadata operations (LIST/HEAD) are fast due to RocksDB indexing.<br><strong>RustFs:</strong> Write throughput scales linearly with nodes (no central coordinator), but LIST operations remain at 4-7 ops/s due to filesystem directory walking — this is a measured limitation, not solvable by adding nodes.</p>
+    </div>
+  </details>
+
+  <details style="background:var(--surface);margin-bottom:14px">
+    <summary style="color:var(--amber)"><span class="tag tag-amber">Evidence from Benchmarks</span> RustFs stays consistent under any load — Ozone degrades</summary>
+    <div class="detail-body">
+      <p style="font-size:13px;margin:8px 0">Our benchmark data confirms the architectural difference in scaling behavior:</p>
+      <table class="cmp-table" style="font-size:12.5px">
+        <thead><tr><th>Metric</th><th>RustFs (all scenarios)</th><th>Ozone (all scenarios)</th></tr></thead>
+        <tbody>
+          <tr><td>PUT ops/s c1 → c64</td><td class="num">13.2 → 37.2 (2.8x, linear)</td><td class="num">11.1 → 37.3 (3.4x, then plateau)</td></tr>
+          <tr><td>PUT success rate across all tests</td><td class="num better">100% everywhere</td><td class="num worse">67-100% (degrades with file size + concurrency)</td></tr>
+          <tr><td>Soak throughput variance (1hr)</td><td class="num better">&lt;0.5% drift</td><td class="num worse">2.6% decline + p99 grows 56%</td></tr>
+          <tr><td>Burst handling (c64, 30s)</td><td class="num better">37 ops/s from second 1</td><td class="num worse">7 ops/s (Path), 0 ops/s (IS)</td></tr>
+          <tr><td>PUT latency stdDev at c64</td><td class="num better">242ms (predictable)</td><td class="num worse">1,246ms (5x more jitter)</td></tr>
+          <tr><td>Mixed workload stability</td><td class="num better">Flat across c16→c64</td><td class="num worse">IS drops 20% at write-heavy c64</td></tr>
+        </tbody>
+      </table>
+      <p style="font-size:12.5px;margin:8px 0"><strong>Pattern:</strong> RustFs performance is <strong>predictable and flat</strong> regardless of concurrency, duration, or load pattern. Ozone performance <strong>varies with load</strong> — fast at steady state, but degrades under burst, high concurrency, large files, or sustained load. This is the signature of a centralized bottleneck (OM) vs a distributed design (peer-to-peer hash).</p>
+    </div>
+  </details>
+
+  <div class="card" style="margin-top:14px;border-left:3px solid var(--amber)">
+    <h3 style="color:var(--amber)">Scaling Characteristics — Observed From Benchmarks</h3>
+    <table class="cmp-table" style="margin-top:10px;font-size:12.5px">
+      <thead><tr><th>Scale</th><th>RustFs Observed Behavior</th><th>Ozone Observed Behavior</th></tr></thead>
+      <tbody>
+        <tr><td>Low concurrency (c1-c4)</td><td>PUT 20-35% faster; GET 1.3-1.7x faster; 100% success</td><td>Lower PUT/GET throughput; 100% success at small sizes; OM overhead visible in latency</td></tr>
+        <tr><td>Medium concurrency (c16)</td><td>PUT plateaus at ~37 ops/s; GET ~1,207 ops/s; DELETE 183 ops/s</td><td>PUT matches RustFs but 6-29% failures at medium/large sizes; GET overtakes at 2,193 ops/s; DELETE 3x faster at 556 ops/s</td></tr>
+        <tr><td>High concurrency (c64)</td><td>GET/HEAD plateau (disk saturation via O_DIRECT); PUT stable at 37 ops/s, 100% success</td><td>GET 5x faster (page cache); HEAD 6.4x faster; Burst: OM bottleneck causes IS to score 0 ops/s in 30s window</td></tr>
+        <tr><td>Sustained (1hr soak)</td><td>186 ops/s, <strong>100% success</strong>, flat throughput, no degradation</td><td>1,226 ops/s (981 successful), <strong>80% success</strong>, p99 grows over time</td></tr>
+      </tbody>
+    </table>
+    <p style="font-size:12px;color:var(--text-dim);margin-top:8px"><strong>Note:</strong> This table reports only measured results from the 3-node cluster benchmark. Behavior at larger cluster sizes (10+, 100+ nodes) was not tested.</p>
+  </div>
+
+  <!-- Production Impact Explainers -->
+  <div class="section-title">Production Impact — What These Results Mean For Your Application</div>
+
+  <details style="background:var(--surface);margin-bottom:14px">
+    <summary style="color:var(--red)"><span class="tag tag-red">Read-After-Write 0%</span> Ozone — What actually breaks</summary>
+    <div class="detail-body">
+      <p style="font-size:13px;margin:8px 0">When a PUT returns 200 OK but the immediately following GET returns 404, here's what goes wrong in real applications:</p>
+      <pre style="background:var(--bg);padding:12px;border-radius:6px;font-size:11.5px;line-height:1.7;color:var(--text-dim);font-family:'JetBrains Mono','SF Mono',monospace">
+Scenario 1: User uploads profile photo
+  PUT /photos/user-123/avatar.jpg → 200 OK
+  Browser redirects to profile page
+  GET /photos/user-123/avatar.jpg → 404 Not Found
+  User sees: broken image icon, thinks upload failed
+  User re-uploads 3 times → 3 duplicate objects
+
+Scenario 2: Payment processing
+  PUT /receipts/order-789.pdf → 200 OK
+  Confirmation service: GET /receipts/order-789.pdf → 404
+  Service logs: "Receipt generation failed"
+  Customer gets: "Something went wrong" error
+  Support ticket created, manual intervention needed
+
+Scenario 3: CI/CD pipeline
+  Build stage: PUT /artifacts/build-456.tar.gz → 200 OK
+  Deploy stage: GET /artifacts/build-456.tar.gz → 404
+  Pipeline fails, deployment rolled back
+  Developer reruns pipeline → succeeds (object now visible)</pre>
+      <p style="font-size:13px;margin:8px 0"><strong>Why does Ozone's table cache not prevent this?</strong></p>
+      <p style="font-size:12.5px"><strong>Our test uses a single OM (no HA, no followers).</strong> The table cache should guarantee read-after-write on the same OM. Yet we measure 0% success. Likely causes:</p>
+      <ul style="font-size:12.5px">
+        <li><strong>Ratis async apply:</strong> Even single-node Ratis may return success (WAL committed) before <code>applyTransaction</code> runs — the cache is not yet updated when GET arrives</li>
+        <li><strong>S3G connection pooling:</strong> PUT and GET use different OzoneClient instances from the pool — each may see a different state snapshot</li>
+        <li><strong>Table cache bugs:</strong> Known issues with cache rollback (HDDS-11443), leaks (HDDS-13363), cleanup desync (HDDS-13365)</li>
+      </ul>
+      <p style="font-size:12px;margin-top:10px;padding:8px 12px;background:rgba(52,211,153,.08);border-radius:6px"><strong style="color:var(--green)">Known mitigation options (not tested in this benchmark):</strong><br>
+      • <strong>HDDS-14509:</strong> <code>LEADER_ONLY</code> / <code>LINEARIZABLE</code> read consistency levels (available in Ozone 2.2.0+)<br>
+      • <strong>Client-side delay:</strong> Inserting a wait between PUT and GET to allow Ratis apply to complete<br>
+      <span style="color:var(--text-dim)">None of these were enabled in our test — all results reflect Ozone's default S3G configuration on a single OM.</span></p>
+    </div>
+  </details>
+
+  <details style="background:var(--surface);margin-bottom:14px">
+    <summary style="color:var(--red)"><span class="tag tag-red">Overwrite Storm 0%</span> Ozone — Concurrent writers silently rejected</summary>
+    <div class="detail-body">
+      <p style="font-size:13px;margin:8px 0">Ozone uses <strong>optimistic locking</strong> for overwrites. When two writers try to update the same key simultaneously:</p>
+      <pre style="background:var(--bg);padding:12px;border-radius:6px;font-size:11.5px;line-height:1.7;color:var(--text-dim);font-family:'JetBrains Mono','SF Mono',monospace">
+Writer A: openKey("config.json", expectedGen=5) → granted, gen=6
+Writer B: openKey("config.json", expectedGen=5) → granted, gen=7
+
+Writer A: commitKey(gen=6, data="version-A") → SUCCESS ✓
+Writer B: commitKey(gen=7, data="version-B")
+  → OM checks: current gen is now 6 (from Writer A)
+  → Writer B expected gen=5, but it's 6
+  → REJECTED: KEY_NOT_FOUND or generation mismatch
+
+Result: Only Writer A's data persists. Writer B's write is silently lost.
+No error returned to Writer B in some code paths → silent data loss.</pre>
+      <p style="font-size:13px;margin:8px 0"><strong>Real-world scenarios where this breaks:</strong></p>
+      <ul style="font-size:12.5px">
+        <li><strong>Shared config files:</strong> Two deployers updating the same config → one update silently lost</li>
+        <li><strong>Collaborative editing:</strong> Two users saving the same document → last-writer-wins expected, but second writer's save is rejected entirely</li>
+        <li><strong>Counter/state objects:</strong> Multiple workers updating a progress tracker → updates dropped under contention</li>
+        <li><strong>Log aggregation:</strong> Multiple processes appending to the same log object → only one succeeds per cycle</li>
+      </ul>
+      <p style="font-size:12px;margin-top:10px;padding:8px 12px;background:rgba(52,211,153,.08);border-radius:6px"><strong style="color:var(--green)">💡 Mitigation strategies:</strong><br>
+      • <strong>Use unique keys:</strong> Instead of overwriting <code>status.json</code>, write <code>status-{timestamp}.json</code> — avoids contention entirely<br>
+      • <strong>CAS retry loop:</strong> Read current generation → write with expected generation → retry on conflict (like database optimistic locking)<br>
+      • <strong>External locking:</strong> Use ZooKeeper or a distributed lock before writing shared mutable objects<br>
+      • <strong>RustFs for mutable objects:</strong> RustFs's atomic xl.meta replace handles concurrent overwrites with ~93% success (last-writer-wins semantics)</p>
+    </div>
+  </details>
+
+  <details style="background:var(--surface);margin-bottom:14px">
+    <summary style="color:var(--green)"><span class="tag tag-green">RustFs 100% RAW</span> How it achieves strong consistency — and caveats</summary>
+    <div class="detail-body">
+      <p style="font-size:13px;margin:8px 0">RustFs achieves 100% read-after-write because the read path is deterministic:</p>
+      <pre style="background:var(--bg);padding:12px;border-radius:6px;font-size:11.5px;line-height:1.7;color:var(--text-dim);font-family:'JetBrains Mono','SF Mono',monospace">
+PUT "photo.jpg":
+  hash("photo.jpg") → erasure Set #7 (drives 3,5,8,11 data + 1,4,9,12 parity)
+  → write shards to drives 3,5,8,11,1,4,9,12
+  → fdatasync each shard (data physically on disk platter)
+  → quorum ACK (need data+1 drives to confirm)
+  → return 200 OK
+
+GET "photo.jpg" (immediately after):
+  hash("photo.jpg") → erasure Set #7 (SAME drives: 3,5,8,11,1,4,9,12)
+  → read from drives 3,5,8,11 (data shards)
+  → data IS there — fdatasync guaranteed it before PUT returned
+  → return data ✓</pre>
+      <p style="font-size:13px;margin:8px 0">The key insight: <strong>no intermediate metadata layer</strong>. The hash function maps directly to physical drives, and fdatasync ensures data is on those drives before ACK. There's nothing that needs to "catch up".</p>
+      <p style="font-size:13px;margin:8px 0"><strong>Caveats and edge cases:</strong></p>
+      <ul style="font-size:12.5px">
+        <li><span class="tag tag-amber">Filesystem requirement</span> This only works correctly on <strong>XFS or ZFS</strong>. On ext4, O_DIRECT + fdatasync semantics can break — data may not be durable even after fdatasync returns</li>
+        <li><span class="tag tag-amber">Network partitions</span> If a node becomes unreachable after PUT ACK but before the client's GET, and the GET routes to a different node via the load balancer, the new node may not have the data (it was written to the original node's local drives). The Nginx least_conn LB doesn't guarantee same-node routing.</li>
+        <li><span class="tag tag-amber">Quorum edge case</span> PUT ACKs after quorum (data+1 drives), not ALL drives. If the GET hits a drive that was in the minority (didn't ACK yet), it reads stale xl.meta. RustFs handles this with quorum reads (reads from multiple drives, picks latest version), but this adds latency.</li>
+      </ul>
+    </div>
+  </details>
+
+</div>
+
+<!-- ─── MIXED / SOAK TAB ──────────────────────────────────────────────────── -->
+<div class="tab-panel" id="panel-mixed">
+  <div class="section-title">Mixed Workloads &amp; Soak Test</div>
+
+  <div class="card" style="margin-bottom:20px;border-left:3px solid var(--red)">
+    <h3 style="color:var(--red)">⚠ Reading These Numbers — Failures Inflate ops/s</h3>
+    <p style="font-size:13px;margin:8px 0">Ozone shows 1,226 total ops/s vs RustFs's 186 — but <strong>this comparison is misleading</strong>. Here's why:</p>
+    <pre style="background:var(--bg);padding:12px;border-radius:6px;font-size:11.5px;line-height:1.7;color:var(--text-dim);font-family:'JetBrains Mono','SF Mono',monospace">
+How the benchmark works (c16 = 16 threads):
+  Each thread: send op → wait for response → immediately send next op
+
+Successful PUT: send → write 3MB → EC encode → commit → ~16ms → done
+Failed PUT:     send → error response → ~0-2ms → done (no data written)
+                                         ↑ thread freed 8x faster
+
+With 20% failures, each failed op frees its thread almost instantly.
+That thread starts a new operation → more ops counted per second.
+
+Ozone soak:  1,226 total ops/s  →  but only 981 SUCCESSFUL ops/s
+             ↑ 245 fast failures/sec inflate total by ~22%
+
+RustFs soak:   186 total ops/s  →  186 SUCCESSFUL ops/s (0 failures)
+               ↑ no inflation, what you see is what you get</pre>
+    <p style="font-size:13px;margin:8px 0">The <strong>honest comparison</strong>: Ozone completes <strong>981 successful ops/s</strong> (5.3x RustFs) — not 1,226 (6.6x). Still significantly faster, but the headline number overstates the gap. All tables below show both total and successful ops/s.</p>
+  </div>
+
+  <div class="grid grid-2">
+    <div class="card"><h3>Mixed Workload ops/s</h3><div class="chart-wrap"><canvas id="chartMixed"></canvas></div></div>
+    <div class="card"><h3>Soak Test (1hr) — Reliability</h3><div class="chart-wrap"><canvas id="chartSoak"></canvas></div></div>
+  </div>
+
+  <div class="grid grid-2" style="margin-top:20px">
+    <div class="card">
+      <h3>Burst Test (30s, c64)</h3>
+      <table class="cmp-table">
+        <thead><tr><th>System</th><th>Ops</th><th>ops/s</th><th>MB/s</th></tr></thead>
+        <tbody>
+          <tr><td>RustFs Path</td><td class="num better">1,152</td><td class="num better">36.98</td><td class="num">110.93</td></tr>
+          <tr><td>RustFs IS</td><td class="num better">1,150</td><td class="num better">37.23</td><td class="num">111.70</td></tr>
+          <tr><td>Ozone Path</td><td class="num">353</td><td class="num">7.06</td><td class="num">21.18</td></tr>
+          <tr><td>Ozone IS</td><td class="num fail">0</td><td class="num fail">0.00</td><td class="num">0.00</td></tr>
+        </tbody>
+      </table>
+      <p style="font-size:12px;color:var(--text-dim);margin-top:12px">Ozone's OM Raft group (openKey/commitKey) + EC block allocation through SCM become bottlenecks in short burst windows. RustFs's peer-to-peer hash-based design has no central coordinator to saturate.</p>
+    </div>
+    <div class="card">
+      <h3>Soak Test Summary (1hr, c16)</h3>
+      <table class="cmp-table">
+        <thead><tr><th>Metric</th><th>RustFs Path</th><th>RustFs IS</th><th>Ozone Path</th><th>Ozone IS</th></tr></thead>
+        <tbody>
+          <tr><td>Total Ops</td><td class="num">671K</td><td class="num">666K</td><td class="num">4.4M</td><td class="num">3.96M</td></tr>
+          <tr><td>Success Rate</td><td class="num better">100%</td><td class="num better">100%</td><td class="num worse">80.0%</td><td class="num worse">80.0%</td></tr>
+          <tr><td>Total ops/s</td><td class="num">186</td><td class="num">185</td><td class="num">1,226</td><td class="num">991</td></tr>
+          <tr><td>Successful ops/s</td><td class="num better">186</td><td class="num better">185</td><td class="num better">981</td><td class="num">793</td></tr>
+          <tr><td>p99 (ms)</td><td class="num">420</td><td class="num">420</td><td class="num better">34</td><td class="num">216</td></tr>
+          <tr><td>GC Overhead</td><td class="num better">0.14%</td><td class="num better">0.40%</td><td class="num">0.44%</td><td class="num">0.66%</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Production Impact -->
+  <div class="section-title">Production Reality Check — Do These Benchmarks Reflect Real Workloads?</div>
+
+  <details style="background:var(--surface);margin-bottom:14px">
+    <summary style="color:var(--amber)"><span class="tag tag-amber">Mixed Workload</span> Why both systems look similar — and when they won't</summary>
+    <div class="detail-body">
+      <p style="font-size:13px;margin:8px 0">The mixed workload results show near-identical performance (~185 ops/s read-heavy, ~53 ops/s write-heavy). This is <strong>misleading for production planning</strong> because:</p>
+      <pre style="background:var(--bg);padding:12px;border-radius:6px;font-size:11.5px;line-height:1.7;color:var(--text-dim);font-family:'JetBrains Mono','SF Mono',monospace">
+Benchmark mix (read-heavy): 80% GET + 10% PUT + 10% HEAD
+  → All operations hit the SAME 3MB object size
+  → All operations run against a warm dataset (in cache)
+  → No LIST operations in the mix
+  → Concurrency is steady (c16/c64), no bursts
+
+Real production traffic:
+  → Mixed object sizes (1KB metadata → 500MB videos)
+  → Cold + hot data (cache hit rate varies 20-90%)
+  → LIST operations for UI browsing, sync, discovery
+  → Bursty traffic (lunch hour spike, batch jobs at midnight)
+  → Background operations (compaction, GC, replication repair)</pre>
+      <p style="font-size:13px;margin:8px 0"><strong>When the gap widens in production:</strong></p>
+      <ul style="font-size:12.5px">
+        <li><span class="tag tag-blue">Ozone pulls ahead</span> When your cache hit rate is high (CDN, repeated access patterns), GET operations are served from page cache → Ozone's advantage compounds</li>
+        <li><span class="tag tag-blue">Ozone pulls ahead</span> When your mix includes LIST operations (data lake queries, folder browsing) → 20-60x LIST advantage dominates the overall throughput</li>
+        <li><span class="tag tag-green">RustFs pulls ahead</span> When traffic is bursty (flash sales, event-driven) → RustFs handles burst without central coordinator bottleneck</li>
+        <li><span class="tag tag-green">RustFs pulls ahead</span> When your mix includes overwrites or write-then-read patterns → 100% consistency vs 0%</li>
+        <li><span class="tag tag-amber">Both degrade</span> When mixed object sizes hit Ozone's size-sweep weakness, or when RustFs's local drives saturate at high concurrency</li>
+      </ul>
+      <p style="font-size:12px;color:var(--text-dim);margin-top:8px"><strong>Bottom line:</strong> The benchmark's "near-identical mixed workload" result is an artifact of the specific test parameters (single object size, warm cache, no LIST). Real-world performance will diverge significantly based on your specific access patterns.</p>
+    </div>
+  </details>
+
+  <details style="background:var(--surface);margin-bottom:14px">
+    <summary style="color:var(--red)"><span class="tag tag-red">Burst Test</span> Ozone IS 0 ops/s — What happens in a real flash sale</summary>
+    <div class="detail-body">
+      <p style="font-size:13px;margin:8px 0">The burst test hits c64 PUT with zero warmup for 30 seconds. Ozone InputStream produced <strong>literally zero successful operations</strong>. Here's what happens:</p>
+      <pre style="background:var(--bg);padding:12px;border-radius:6px;font-size:11.5px;line-height:1.7;color:var(--text-dim);font-family:'JetBrains Mono','SF Mono',monospace">
+Second 0: 64 concurrent PUT requests arrive simultaneously
+
+RustFs (no coordinator):
+  → 64 requests each hash to an erasure set
+  → Each writes independently to local drives
+  → No queuing, no consensus, no allocation requests
+  → By second 1: already serving 33+ ops/s
+  → Steady state by second 5: 37 ops/s
+
+Ozone (OM + SCM pipeline):
+  → 64 openKey requests flood OM Raft group simultaneously
+  → OM Raft: must serialize 64 proposals through consensus
+  → Each openKey → SCM allocate block → must find EC pipeline
+  → SCM: 64 block allocation requests queue behind each other
+  → Raft WAL: 64 sequential appends (Raft is inherently serial)
+  → Pipeline collapses:
+    - OM Raft backlog: 64 pending proposals
+    - SCM allocation queue: 64 pending blocks
+    - Client timeouts: operations start expiring
+    - Ozone Path: 7 ops/s (OM processes ~7/sec through Raft)
+    - Ozone IS: 0 ops/s (InputStream's heap allocation + GC
+      adds enough overhead to push ALL operations past timeout)</pre>
+      <p style="font-size:13px;margin:8px 0"><strong>Real-world burst scenarios:</strong></p>
+      <ul style="font-size:12.5px">
+        <li><strong>Flash sale start:</strong> 10,000 users click "buy" at the same second → order confirmation files need to be written → with Ozone, first 30 seconds of writes may all fail</li>
+        <li><strong>Breaking news:</strong> 50 photographers upload simultaneously → media ingest pipeline stalls for the critical first minute</li>
+        <li><strong>Cron storm:</strong> 64 scheduled jobs all trigger at midnight → all write results simultaneously → cascading failures</li>
+        <li><strong>Auto-scaling lag:</strong> Traffic spikes before new instances warm up → existing instances get burst of writes</li>
+      </ul>
+      <p style="font-size:12px;margin-top:10px;padding:8px 12px;background:rgba(52,211,153,.08);border-radius:6px"><strong style="color:var(--green)">Observed behavior patterns:</strong><br>
+      • Ozone performs well at c16 (37 ops/s, 100% success for small files) but collapses at c64 burst (7 ops/s Path, 0 ops/s IS)<br>
+      • RustFs maintains 37 ops/s at both c16 and c64 — no degradation under burst<br>
+      • The burst failure is specific to short windows (30s) — in the 1-hour soak at c16, Ozone maintains 80% success<br>
+      <span style="color:var(--text-dim)">Impact of backpressure, rate limiting, or pre-warming on Ozone burst behavior was <strong>not tested</strong>.</span></p>
+    </div>
+  </details>
+
+  <details style="background:var(--surface);margin-bottom:14px">
+    <summary style="color:var(--amber)"><span class="tag tag-amber">Soak Test</span> Ozone 80% success — Is 20% failure acceptable?</summary>
+    <div class="detail-body">
+      <p style="font-size:13px;margin:8px 0">Ozone completed 3.53M successful ops vs RustFs's 671K — <strong>5.3x more successful work</strong>. But 881K failures is significant. Let's put this in production context:</p>
+      <pre style="background:var(--bg);padding:12px;border-radius:6px;font-size:11.5px;line-height:1.7;color:var(--text-dim);font-family:'JetBrains Mono','SF Mono',monospace">
+Ozone over 1 hour (c16 mixed workload):
+  4,413,600 total operations attempted
+  3,532,011 succeeded (80.0%)
+    881,589 failed   (20.0%)
+
+That's ~245 failures per second, sustained for 1 hour.
+
+In production terms:
+  → 245 HTTP 5xx errors per second hitting your load balancer
+  → 245 error log entries per second (14,700/min, 882K/hour)
+  → If each failure triggers a retry: 245 extra ops/s load
+  → If each failure triggers an alert: alert storm within seconds
+  → If failures cause user-visible errors: ~1 in 5 requests fail</pre>
+      <p style="font-size:13px;margin:8px 0"><strong>But context matters — what KIND of failures?</strong></p>
+      <ul style="font-size:12.5px">
+        <li>All failures are <strong>RETRY_EXHAUSTED</strong> (tested with maxAttempts=1, no retries)</li>
+        <li>With maxAttempts=1, every failure is a single attempt — no retry was attempted. Whether retries would recover these failures was <strong>not tested</strong></li>
+        <li>The 20% failure rate is at <strong>c16 sustained for 1 hour</strong> — lower concurrency or shorter bursts may see higher success rates</li>
+      </ul>
+      <p style="font-size:13px;margin:8px 0;padding:8px 12px;background:rgba(248,113,113,.08);border-radius:6px"><strong style="color:var(--red)">⚠ Caution: Failures inflate ops/s.</strong> Failed operations return faster than successful ones (no data transfer, instant error). With c16 threads, each fast-failing thread immediately starts the next operation — inflating the total ops/s count. The <strong>honest comparison</strong>:<br>
+      • Ozone <strong>successful</strong> ops/s: <strong>981</strong> (not 1,226 — the 245 failures/sec inflate the total by ~22%)<br>
+      • RustFs successful ops/s: <strong>186</strong> (100% success, no inflation)<br>
+      • Real multiplier: <strong>5.3x</strong> successful operations, not 6.6x total operations</p>
+      <p style="font-size:13px;margin:8px 0"><strong>What the data shows — the throughput vs reliability trade-off:</strong></p>
+      <table class="cmp-table" style="margin-top:8px">
+        <thead><tr><th>Metric</th><th>RustFs (measured)</th><th>Ozone (measured)</th></tr></thead>
+        <tbody>
+          <tr><td>Total ops/s</td><td class="num">186</td><td class="num">1,226 (inflated by fast-failing threads)</td></tr>
+          <tr><td>Successful ops/s</td><td class="num better">186 (100%)</td><td class="num">981 (80%)</td></tr>
+          <tr><td>Failed ops/s</td><td class="num better">0</td><td class="num worse">245</td></tr>
+          <tr><td>Total successful ops (1hr)</td><td class="num">671,037</td><td class="num better">3,532,011 (5.3x more)</td></tr>
+          <tr><td>Throughput degradation over time</td><td class="num better">&lt;0.5% drift</td><td class="num worse">p99 grows 56% over 1hr</td></tr>
+        </tbody>
+      </table>
+      <p style="font-size:12px;margin-top:8px;color:var(--text-dim)"><strong>Note:</strong> Neither system achieved both high throughput AND zero failures in this benchmark. Ozone completes 5.3x more successful operations but fails 1 in 5. RustFs never fails but delivers lower absolute throughput. Impact of retries on Ozone's success rate was not tested (maxAttempts=1).</p>
+      <p style="font-size:12px;margin-top:10px;padding:8px 12px;background:rgba(96,165,250,.08);border-radius:6px"><strong style="color:var(--blue)">Observed complementary strengths:</strong><br>
+      • RustFs: 100% write success, strong consistency, predictable latency under all loads<br>
+      • Ozone: 5x faster GETs at c64, 20-60x faster LIST, 6.4x faster HEAD<br>
+      <span style="color:var(--text-dim)">Each system excels where the other is weakest. The choice depends on whether write reliability or read/query throughput is the higher priority for the specific workload.</span></p>
+    </div>
+  </details>
+
+  <details style="background:var(--surface);margin-bottom:14px">
+    <summary style="color:var(--amber)"><span class="tag tag-amber">Soak Degradation</span> Does Ozone get worse over time?</summary>
+    <div class="detail-body">
+      <p style="font-size:13px;margin:8px 0">The time-series data (see Deep Dive tab) shows Ozone's throughput drifts from 1,252 → 1,226 ops/s over 1 hour (~2% decline). Is this a real problem?</p>
+      <pre style="background:var(--bg);padding:12px;border-radius:6px;font-size:11.5px;line-height:1.7;color:var(--text-dim);font-family:'JetBrains Mono','SF Mono',monospace">
+Ozone over 1 hour:
+  Minute 5:   1,259 ops/s, p99: 32ms    ← peak performance
+  Minute 30:  1,249 ops/s, p99: 38ms    ← slight decline
+  Minute 45:  1,238 ops/s, p99: 46ms    ← p99 growing
+  Minute 60:  1,226 ops/s, p99: 50ms    ← 2.6% slower, p99 +56%
+
+RustFs over 1 hour:
+  Minute 5:   187.0 ops/s, p99: 430ms   ← steady
+  Minute 30:  187.2 ops/s, p99: 434ms   ← rock solid
+  Minute 45:  186.7 ops/s, p99: 410ms   ← still steady
+  Minute 60:  186.4 ops/s, p99: 417ms   ← &lt;0.5% variance</pre>
+      <p style="font-size:13px;margin:8px 0"><strong>Why Ozone degrades:</strong></p>
+      <ul style="font-size:12.5px">
+        <li><strong>RocksDB compaction:</strong> As more keys are written and deleted, SST files accumulate → background compaction kicks in → competes with lookupKey for I/O and CPU</li>
+        <li><strong>Raft WAL growth:</strong> 1 hour of writes generates a large Raft WAL → periodic snapshots and log truncation add latency spikes</li>
+        <li><strong>deletedTable accumulation:</strong> Mixed workload includes DELETEs → deletedTable grows → KeyDeletingService scans consume OM cycles</li>
+        <li><strong>JVM GC pressure:</strong> GC overhead grows from 0.44% → approaching compaction + cache eviction cycles</li>
+      </ul>
+      <p style="font-size:13px;margin:8px 0"><strong>Extrapolating beyond 1 hour:</strong></p>
+      <ul style="font-size:12.5px">
+        <li>At 2% decline per hour: after 24 hours Ozone would be at ~650 ops/s (still 3.5x faster than RustFs)</li>
+        <li>In practice, RocksDB compaction is periodic — throughput may stabilize after the first few compaction cycles</li>
+        <li>A 4-hour or 24-hour soak test would be needed to confirm whether the degradation is linear, logarithmic, or plateaus</li>
+      </ul>
+      <p style="font-size:12px;color:var(--text-dim)"><strong>RustFs stability:</strong> RustFs shows &lt;0.5% variance over 1 hour because there's no background compaction, no Raft WAL to manage, no deletedTable to scan. The only background work is trash cleanup every ~5 minutes, which is lightweight.</p>
+    </div>
+  </details>
+
+</div>
+
+<!-- ─── DEEP DIVE TAB ─────────────────────────────────────────────────── -->
+<div class="tab-panel" id="panel-deepdive">
+
+  <!-- ═══ SIZE SWEEP ═══ -->
+  <div class="section-title">Size-Sweep — Variable Object Sizes Reveal A Showstopper</div>
+  <p style="font-size:13px;color:var(--text-dim);margin-bottom:16px">The size-sweep test writes and reads objects of varying sizes in a single run (c4). This exposes how each system handles mixed workloads with unpredictable object sizes.</p>
+
+  <div class="grid grid-2">
+    <div class="card" style="border-left:3px solid var(--red)">
+      <h3 style="color:var(--red)">Size-Sweep PUT — Ozone Completely Fails</h3>
+      <table class="cmp-table">
+        <thead><tr><th>System</th><th>ops/s</th><th>p50</th><th>p99</th><th>Success</th></tr></thead>
+        <tbody>
+          <tr><td>RustFs Path</td><td class="num better">1.68</td><td class="num">2.2s</td><td class="num">6.8s</td><td class="num better">99.8%</td></tr>
+          <tr><td>RustFs IS</td><td class="num better">1.69</td><td class="num">2.6s</td><td class="num">6.2s</td><td class="num better">100%</td></tr>
+          <tr><td>Ozone Path</td><td class="num fail">0.03</td><td class="num fail">120s</td><td class="num fail">120s</td><td class="num fail">0%</td></tr>
+          <tr><td>Ozone IS</td><td class="num fail">0.02</td><td class="num fail">120s</td><td class="num fail">120s</td><td class="num fail">0%</td></tr>
+        </tbody>
+      </table>
+      <p style="font-size:12px;color:var(--text-dim);margin-top:10px">Every Ozone PUT hit the <strong>client-side 120s timeout</strong> (configured via <code>perAttemptTimeout: 120s</code>). The p50 of exactly 120,057ms confirms operations were killed by the timeout, not by Ozone rejecting them. Variable-size block allocation through OM/SCM may simply take longer than 120s — operations might complete given more time. This is a <strong>timeout-induced failure</strong>, not necessarily a hard system limit.</p>
+    </div>
+    <div class="card" style="border-left:3px solid var(--green)">
+      <h3 style="color:var(--green)">Size-Sweep GET — Ozone Massively Wins</h3>
+      <table class="cmp-table">
+        <thead><tr><th>System</th><th>ops/s</th><th>p50</th><th>p99</th><th>Success</th></tr></thead>
+        <tbody>
+          <tr><td>RustFs Path</td><td class="num">1.65</td><td class="num">412ms</td><td class="num">13.1s</td><td class="num better">100%</td></tr>
+          <tr><td>RustFs IS</td><td class="num">1.66</td><td class="num">368ms</td><td class="num">14.2s</td><td class="num better">100%</td></tr>
+          <tr><td>Ozone Path</td><td class="num better">1,484</td><td class="num better">0.006ms</td><td class="num better">13ms</td><td class="num worse">25.2%</td></tr>
+          <tr><td>Ozone IS</td><td class="num better">1,675</td><td class="num better">0.007ms</td><td class="num better">11ms</td><td class="num worse">25.0%</td></tr>
+        </tbody>
+      </table>
+      <p style="font-size:12px;color:var(--text-dim);margin-top:10px">Ozone reads at 1,484-1,675 ops/s (900x faster than RustFs!) but only 25% success — the 75% failures correspond to the objects that failed to write in the PUT sweep (RETRY_EXHAUSTED errors). The successful GETs are sub-millisecond from RocksDB cache.</p>
+    </div>
+  </div>
+
+  <div class="card" style="margin-top:16px;border-left:3px solid var(--red)">
+    <h3 style="color:var(--red)">Production Impact: Size-Sweep Failure</h3>
+    <p style="font-size:13px;margin:8px 0">If your application writes objects of varying sizes (e.g., a CMS with thumbnails + full images + videos), Ozone's block allocation may exceed typical client timeouts. <strong>Caveat:</strong> The benchmark client uses a 120s per-attempt timeout — operations were killed at this threshold. With a longer timeout or retry policy, some writes might succeed. However, &gt;120s for a single PUT is impractical for most interactive applications. Consider size-based sharding or async write queues for mixed-size Ozone workloads.</p>
+  </div>
+
+  <!-- ═══ LATENCY DISTRIBUTION ═══ -->
+  <div class="section-title">Latency Distribution — The Full Percentile Picture</div>
+  <p style="font-size:13px;color:var(--text-dim);margin-bottom:16px">p50 and p99 only show two points. The full percentile spectrum reveals where latency actually hurts.</p>
+
+  <div class="grid grid-2">
+    <div class="card"><h3>PUT Small c16 — Latency Percentiles (ms)</h3><div class="chart-wrap"><canvas id="chartPctPutC16"></canvas></div></div>
+    <div class="card"><h3>PUT Small c64 — Latency Percentiles (ms)</h3><div class="chart-wrap"><canvas id="chartPctPutC64"></canvas></div></div>
+    <div class="card"><h3>GET Small c16 — Latency Percentiles (ms)</h3><div class="chart-wrap"><canvas id="chartPctGetC16"></canvas></div></div>
+    <div class="card"><h3>GET Small c64 — Latency Percentiles (ms)</h3><div class="chart-wrap"><canvas id="chartPctGetC64"></canvas></div></div>
+    <div class="card"><h3>HEAD Small c64 — Latency Percentiles (ms)</h3><div class="chart-wrap"><canvas id="chartPctHeadC64"></canvas></div></div>
+    <div class="card"><h3>PUT Large c16 — Latency Percentiles (ms)</h3><div class="chart-wrap"><canvas id="chartPctPutLgC16"></canvas></div></div>
+  </div>
+
+  <!-- ═══ VARIANCE / STABILITY ═══ -->
+  <div class="section-title">Stability Heatmap — Standard Deviation as % of Mean</div>
+  <p style="font-size:13px;color:var(--text-dim);margin-bottom:16px">StdDev/Mean ratio shows how predictable each system is. Lower = more consistent. Values over 100% mean extreme outliers dominate.</p>
+
+  <div style="overflow-x:auto">
+    <table class="cmp-table" id="varianceTable">
+      <thead>
+        <tr>
+          <th>Scenario</th>
+          <th>RustFs Path<br><small>mean / stdDev / ratio</small></th>
+          <th>RustFs IS<br><small>mean / stdDev / ratio</small></th>
+          <th>Ozone Path<br><small>mean / stdDev / ratio</small></th>
+          <th>Ozone IS<br><small>mean / stdDev / ratio</small></th>
+        </tr>
+      </thead>
+      <tbody id="varianceBody"></tbody>
+    </table>
+  </div>
+
+  <!-- ═══ RESOURCE EFFICIENCY ═══ -->
+  <div class="section-title">Resource Efficiency — Cost Per Operation</div>
+  <p style="font-size:13px;color:var(--text-dim);margin-bottom:16px">Higher throughput means nothing if it burns 10x the CPU. These charts show resource consumption normalized per ops/s.</p>
+
+  <div class="grid grid-2">
+    <div class="card"><h3>CPU Load — Key Scenarios</h3><div class="chart-wrap"><canvas id="chartCpuLoad"></canvas></div></div>
+    <div class="card"><h3>Peak Disk I/O (MB/s) — Key Scenarios</h3><div class="chart-wrap"><canvas id="chartDiskIO"></canvas></div></div>
+    <div class="card"><h3>Network Throughput (MB/s) — PUT Scenarios</h3><div class="chart-wrap"><canvas id="chartNetIO"></canvas></div></div>
+    <div class="card"><h3>MB/s Throughput — PUT by Size</h3><div class="chart-wrap"><canvas id="chartMbps"></canvas></div></div>
+  </div>
+
+  <!-- ═══ FAILURE CONTEXT ═══ -->
+  <div class="section-title">Failure Context — Why Operations Fail</div>
+  <p style="font-size:13px;color:var(--text-dim);margin-bottom:16px">The dashboard shows success rates, but not WHY failures happen. We parsed the ops.csv error categories from the highest-failure scenarios.</p>
+
+  <div class="grid grid-2">
+    <div class="card" style="border-left:3px solid var(--red)">
+      <h3 style="color:var(--red)">Error Categories (Ozone ofPath)</h3>
+      <table class="cmp-table">
+        <thead><tr><th>Scenario</th><th>Failures</th><th>Error Category</th></tr></thead>
+        <tbody>
+          <tr><td>Soak test c16 (1hr)</td><td class="num fail">881,589</td><td>RETRY_EXHAUSTED</td></tr>
+          <tr><td>Size-sweep GET c4</td><td class="num fail">333,159</td><td>RETRY_EXHAUSTED</td></tr>
+          <tr><td>PUT medium c4</td><td class="num fail">236</td><td>RETRY_EXHAUSTED</td></tr>
+          <tr><td>PUT large c16</td><td class="num fail">153</td><td>RETRY_EXHAUSTED</td></tr>
+          <tr><td>Overwrite storm c16</td><td class="num fail">32</td><td>RETRY_EXHAUSTED</td></tr>
+          <tr><td>Read-after-write c1</td><td class="num fail">4</td><td>AssertionError</td></tr>
+          <tr><td>Read-after-write c1</td><td class="num fail">2</td><td>RETRY_EXHAUSTED</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="card" style="border-left:3px solid var(--amber)">
+      <h3 style="color:var(--amber)">Key Insight: Raw Mode — No Retries Configured</h3>
+      <p style="font-size:13px;margin:10px 0">These benchmarks run in <code>resilience: raw</code> mode with <code>maxAttempts: 1</code> (no retries). Every failure is a <strong>first-attempt failure</strong> — the SDK does not retry.</p>
+      <ul style="font-size:13px">
+        <li><strong>Why raw mode?</strong> Retries would mask true backend latency and inflate p99 numbers. Raw mode measures the storage system's actual behavior.</li>
+        <li><strong>All failures are RETRY_EXHAUSTED</strong> — this means the single attempt failed and the SDK reported it as exhausted (1/1 attempts used)</li>
+        <li><strong>Root cause:</strong> Ozone's OM Raft pipeline or EC block allocation cannot keep up under sustained load — operations time out at the HTTP/RPC level</li>
+        <li><strong>Test configuration:</strong> maxAttempts=1 (no retries) — this was intentional to get clean per-operation latency measurements. Impact of higher retry counts on success rate was <strong>not tested</strong></li>
+      </ul>
+      <table class="cmp-table" style="margin-top:12px">
+        <thead><tr><th>System</th><th>Scenario</th><th>Failures</th><th>Failure Rate</th><th>All RETRY_EXHAUSTED</th></tr></thead>
+        <tbody>
+          <tr><td>Ozone Path</td><td>Soak 1hr</td><td class="num fail">881,589</td><td class="num fail">20.0%</td><td>Yes (1 attempt, no retry)</td></tr>
+          <tr><td>Ozone IS</td><td>Soak 1hr</td><td class="num fail">791,857</td><td class="num fail">20.0%</td><td>Yes (1 attempt, no retry)</td></tr>
+          <tr><td>Ozone Path</td><td>PUT large c16</td><td class="num fail">153</td><td class="num fail">28.8%</td><td>Yes (1 attempt, no retry)</td></tr>
+          <tr><td>RustFs Path</td><td>Overwrite c64</td><td class="num fail">2,732</td><td class="num fail">30.3%</td><td>Yes (1 attempt, no retry)</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- ═══ TIME-SERIES TRENDS ═══ -->
+  <div class="section-title">Time-Series Trends — Latency Over Time</div>
+  <p style="font-size:13px;color:var(--text-dim);margin-bottom:16px">Per-second latency data reveals warmup behavior, steady-state stability, and long-term degradation that summary stats hide.</p>
+
+  <div class="grid grid-2">
+    <div class="card"><h3>PUT Small c16 — ops/s Over First 60s</h3><div class="chart-wrap"><canvas id="chartTsPutOps"></canvas></div></div>
+    <div class="card"><h3>PUT Small c16 — p99 Latency Over First 60s</h3><div class="chart-wrap"><canvas id="chartTsPutP99"></canvas></div></div>
+    <div class="card"><h3>Soak Test — ops/s Over 1 Hour (sampled/60s)</h3><div class="chart-wrap"><canvas id="chartTsSoakOps"></canvas></div></div>
+    <div class="card"><h3>Soak Test — p99 Latency Over 1 Hour</h3><div class="chart-wrap"><canvas id="chartTsSoakP99"></canvas></div></div>
+  </div>
+
+  <div class="card" style="margin-top:16px;border-left:3px solid var(--amber)">
+    <h3 style="color:var(--amber)">What The Time-Series Reveals</h3>
+    <ul style="font-size:13px">
+      <li><strong>Warmup:</strong> RustFs PUT reaches steady-state by second 5 (33.9 → 37.2 ops/s). Ozone takes ~15 seconds (29.9 → 36.1 ops/s) — the OM Raft group needs time to warm its pipeline.</li>
+      <li><strong>Ozone p99 spikes:</strong> PUT c16 p99 swings between 680ms and 1,258ms — Raft consensus causes periodic latency bursts. RustFs p99 stays in a tight 434-660ms band.</li>
+      <li><strong>Soak degradation:</strong> Ozone throughput drifts down from 1,252 → 1,226 ops/s over 1 hour (2% decline). RustFs stays flat at 186-187 ops/s. Ozone's RocksDB compaction and Raft WAL growth cause gradual slowdown.</li>
+      <li><strong>Soak p99 divergence:</strong> Ozone p99 grows from 30ms → 50ms over 1 hour. RustFs p99 stays stable at 400-470ms (dominated by PUT latency in the mixed workload).</li>
+    </ul>
+  </div>
+
+  <!-- ═══ TTFB ═══ -->
+  <div class="section-title">TTFB (Time-to-First-Byte) — Streaming Latency</div>
+  <p style="font-size:13px;color:var(--text-dim);margin-bottom:16px">TTFB measures how quickly the first byte arrives after requesting a GET. Critical for streaming media, progressive rendering, and perceived user experience.</p>
+
+  <div class="grid grid-2">
+    <div class="card"><h3>TTFB — GET Small (ms)</h3><div class="chart-wrap"><canvas id="chartTtfb"></canvas></div></div>
+    <div class="card" style="display:flex;flex-direction:column;justify-content:center">
+      <h3>TTFB Key Findings</h3>
+      <table class="cmp-table" style="margin-top:10px">
+        <thead><tr><th></th><th>RustFs c1</th><th>Ozone c1</th><th>RustFs c64</th><th>Ozone c64</th></tr></thead>
+        <tbody>
+          <tr><td>p50</td><td class="num better">6.2ms</td><td class="num">10.3ms</td><td class="num worse">53.3ms</td><td class="num better">10.6ms</td></tr>
+          <tr><td>p95</td><td class="num better">7.6ms</td><td class="num">14.3ms</td><td class="num worse">66.2ms</td><td class="num better">17.4ms</td></tr>
+          <tr><td>p99</td><td class="num better">9.2ms</td><td class="num">15.6ms</td><td class="num worse">73.0ms</td><td class="num better">23.8ms</td></tr>
+        </tbody>
+      </table>
+      <ul style="font-size:12px;margin-top:12px">
+        <li><strong>RustFs c1 = fastest first byte</strong> (6.2ms) — hash lookup + direct disk read, no metadata layer</li>
+        <li><strong>Ozone p50 stays flat</strong> at ~10ms across c1→c64 — but tail degrades: p95 rises 14→17ms (+22%), p99 rises 16→24ms (+53%)</li>
+        <li><strong>RustFs degrades 8.6x</strong> at c64 (6.2 → 53.3ms) — O_DIRECT disk contention delays first byte</li>
+        <li>For <strong>video streaming / progressive loading</strong>, Ozone is decisively better at scale</li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- ═══ COUNTER-INTUITIVE FINDINGS ═══ -->
+  <div class="section-title">Surprising Findings — When InputStream Beats Path</div>
+  <p style="font-size:13px;color:var(--text-dim);margin-bottom:16px">ofPath is faster in most scenarios, but there are specific operations where InputStream wins significantly. The data below shows where and by how much.</p>
+
+  <div class="grid grid-2">
+    <div class="card"><h3>RustFs: LIST ops/s at c16 (Path vs IS)</h3><div class="chart-wrap"><canvas id="chartISListWin"></canvas></div></div>
+    <div class="card"><h3>RustFs: DELETE ops/s at c16 (Path vs IS)</h3><div class="chart-wrap"><canvas id="chartISDeleteWin"></canvas></div></div>
+  </div>
+
+  <div class="card" style="margin-top:16px;border-left:3px solid var(--amber)">
+    <h3 style="color:var(--amber)">Why InputStream Wins for LIST &amp; DELETE</h3>
+    <table class="cmp-table" style="margin-top:10px">
+      <thead><tr><th>Scenario</th><th>Path ops/s</th><th>IS ops/s</th><th>IS Advantage</th><th>Explanation</th></tr></thead>
+      <tbody>
+        <tr><td>RustFs LIST tiny c16</td><td class="num">4.29</td><td class="num better">7.39</td><td class="num better">+72%</td><td>LIST returns metadata, not file data. InputStream batches small responses more efficiently than Path's file-channel approach</td></tr>
+        <tr><td>RustFs LIST small c16</td><td class="num">4.29</td><td class="num better">7.37</td><td class="num better">+72%</td><td>Same pattern — object size doesn't affect LIST (no data transfer)</td></tr>
+        <tr><td>RustFs DELETE small c16</td><td class="num">182.88</td><td class="num better">278.82</td><td class="num better">+52%</td><td>DELETE is metadata-only. InputStream avoids Path's file-handle overhead for operations that don't transfer data</td></tr>
+        <tr><td>RustFs HEAD small c64</td><td class="num">1,585</td><td class="num worse">1,561</td><td class="num">-2%</td><td>HEAD is also metadata-only but Path's overhead is negligible here — basically tied</td></tr>
+        <tr><td>RustFs GET small c64</td><td class="num worse">1,197</td><td class="num better">1,272</td><td class="num better">+6%</td><td>At c64 with O_DIRECT saturation, InputStream's buffered reads can be slightly more efficient under extreme disk contention</td></tr>
+      </tbody>
+    </table>
+    <p style="font-size:12px;color:var(--text-dim);margin-top:10px"><strong>Rule of thumb:</strong> Use ofPath for data-transfer operations (PUT/GET with large files). Use InputStream for metadata operations (LIST, DELETE) and when data comes from in-memory sources.</p>
+  </div>
+
+</div>
+
+<!-- ─── SCENARIOS TAB ──────────────────────────────────────────────────── -->
+<div class="tab-panel" id="panel-scenarios">
+
+  <div class="section-title">Test Scenarios — What We Measured &amp; Why It Matters</div>
+  <p style="font-size:13.5px;color:var(--text-dim);margin-bottom:24px;max-width:800px">Each benchmark scenario maps to a real-world access pattern. Understanding what each test measures helps you predict how these systems will behave in production.</p>
+
+  <!-- Core Operations -->
+  <div class="section-title" style="font-size:16px">Core Operations</div>
+
+  <details open>
+    <summary>PUT — Write new objects</summary>
+    <div class="detail-body">
+      <div class="grid grid-2" style="margin-top:8px">
+        <div>
+          <h3 style="margin-bottom:8px">What it measures</h3>
+          <ul style="font-size:13px">
+            <li>End-to-end write latency: client sends data → storage ACKs durably written</li>
+            <li>Throughput scaling from c1 (serial) to c64 (highly parallel)</li>
+            <li><strong>Success rate</strong> — do writes fail under pressure?</li>
+            <li>Tested at 3MB (small), 10MB (medium), 64MB (large)</li>
+          </ul>
+        </div>
+        <div>
+          <h3 style="margin-bottom:8px">Real-world scenarios</h3>
+          <table class="cmp-table">
+            <tbody>
+              <tr><td><span class="tag tag-green">PUT small c1</span></td><td>User uploads a profile photo on a mobile app</td></tr>
+              <tr><td><span class="tag tag-green">PUT small c16</span></td><td>Image processing pipeline writing thumbnails from 16 workers</td></tr>
+              <tr><td><span class="tag tag-amber">PUT medium c4</span></td><td>Document management system ingesting PDF scans from 4 scanners</td></tr>
+              <tr><td><span class="tag tag-red">PUT large c16</span></td><td>Video transcoding pipeline writing 64MB chunks from 16 encoder threads</td></tr>
+              <tr><td><span class="tag tag-red">PUT small c64</span></td><td>IoT gateway batch-uploading sensor data from 64 devices simultaneously</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <div class="card" style="margin-top:12px;border-left:3px solid var(--green)">
+        <p style="font-size:12.5px"><strong>Key finding:</strong> RustFs is 20-35% faster at c1-c4 (no coordination overhead), converges at c64. But Ozone drops to 67-93% success rate for medium/large files — in production this means <strong>retries, backpressure, and potential data loss without proper error handling</strong>.</p>
+      </div>
+    </div>
+  </details>
+
+  <details>
+    <summary>GET — Read objects back</summary>
+    <div class="detail-body">
+      <div class="grid grid-2" style="margin-top:8px">
+        <div>
+          <h3 style="margin-bottom:8px">What it measures</h3>
+          <ul style="font-size:13px">
+            <li>End-to-end read latency: client requests → first byte → last byte</li>
+            <li>How throughput scales under concurrent readers</li>
+            <li>Whether the system benefits from caching (page cache, block cache)</li>
+            <li>Tested at 3MB, 10MB, 64MB across c1-c64</li>
+          </ul>
+        </div>
+        <div>
+          <h3 style="margin-bottom:8px">Real-world scenarios</h3>
+          <table class="cmp-table">
+            <tbody>
+              <tr><td><span class="tag tag-green">GET small c1</span></td><td>User views a single image on a product page</td></tr>
+              <tr><td><span class="tag tag-green">GET small c16</span></td><td>CDN origin pull — 16 edge nodes fetching the same popular image</td></tr>
+              <tr><td><span class="tag tag-red">GET small c64</span></td><td>Viral content — 64 concurrent readers on a trending post's media</td></tr>
+              <tr><td><span class="tag tag-amber">GET medium c4</span></td><td>4 analysts downloading the same 10MB report from a data lake</td></tr>
+              <tr><td><span class="tag tag-amber">GET large c16</span></td><td>ML training pipeline reading 64MB dataset shards from 16 GPU workers</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <div class="card" style="margin-top:12px;border-left:3px solid var(--blue)">
+        <p style="font-size:12.5px"><strong>Key finding:</strong> RustFs wins at low concurrency (1.7x at c1) but <strong>plateaus at c16</strong> due to O_DIRECT disk saturation. Ozone keeps scaling to 5,915 ops/s at c64 (5x faster). If your workload has bursty reads (CDN, viral content, ML training), Ozone dramatically outperforms.</p>
+      </div>
+    </div>
+  </details>
+
+  <details>
+    <summary>HEAD — Check if object exists + get metadata</summary>
+    <div class="detail-body">
+      <div class="grid grid-2" style="margin-top:8px">
+        <div>
+          <h3 style="margin-bottom:8px">What it measures</h3>
+          <ul style="font-size:13px">
+            <li>Metadata lookup speed — no data transferred, just headers</li>
+            <li>How fast the system can answer "does this object exist?" and "how big is it?"</li>
+            <li>Critical for cache validation (If-Modified-Since) and pre-flight checks</li>
+          </ul>
+        </div>
+        <div>
+          <h3 style="margin-bottom:8px">Real-world scenarios</h3>
+          <table class="cmp-table">
+            <tbody>
+              <tr><td><span class="tag tag-green">HEAD c1</span></td><td>CDN checks if cached object is still valid (ETag / Last-Modified)</td></tr>
+              <tr><td><span class="tag tag-amber">HEAD c16</span></td><td>Backup system verifying 16 files exist before starting differential backup</td></tr>
+              <tr><td><span class="tag tag-red">HEAD c64</span></td><td>Microservice mesh — 64 services checking object existence on startup</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <div class="card" style="margin-top:12px;border-left:3px solid var(--blue)">
+        <p style="font-size:12.5px"><strong>Key finding:</strong> Ozone is 6.4x faster at c64 (10,188 vs 1,585 ops/s). RustFs reads xl.meta from 8 drives per HEAD; Ozone does a single RocksDB point lookup from memory. For metadata-heavy workloads (cache validation, existence checks), this is decisive.</p>
+      </div>
+    </div>
+  </details>
+
+  <details>
+    <summary>LIST — Enumerate objects by prefix</summary>
+    <div class="detail-body">
+      <div class="grid grid-2" style="margin-top:8px">
+        <div>
+          <h3 style="margin-bottom:8px">What it measures</h3>
+          <ul style="font-size:13px">
+            <li>How fast the system can return paginated lists of objects matching a prefix</li>
+            <li>Scales from tiny (1KB objects) to xlarge (256MB objects) — object size shouldn't matter for listing</li>
+            <li>Tests at c1-c16 (LIST is typically not c64 in production)</li>
+          </ul>
+        </div>
+        <div>
+          <h3 style="margin-bottom:8px">Real-world scenarios</h3>
+          <table class="cmp-table">
+            <tbody>
+              <tr><td><span class="tag tag-green">LIST c1</span></td><td>User browses a folder in a file manager UI</td></tr>
+              <tr><td><span class="tag tag-amber">LIST c4</span></td><td>ETL pipeline discovering new files across 4 input prefixes</td></tr>
+              <tr><td><span class="tag tag-red">LIST c16</span></td><td>Data lake — 16 Spark executors listing partitions to plan a query</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <div class="card" style="margin-top:12px;border-left:3px solid var(--blue)">
+        <p style="font-size:12.5px"><strong>Key finding:</strong> The largest gap in the entire benchmark — Ozone 20-60x faster. RustFs walks filesystem directories (O(N) scan), Ozone seeks in RocksDB (O(log N)). If your application does frequent listing (data lake queries, folder browsing, incremental sync), RustFs is essentially unusable at scale.</p>
+      </div>
+    </div>
+  </details>
+
+  <details>
+    <summary>DELETE — Remove objects</summary>
+    <div class="detail-body">
+      <div class="grid grid-2" style="margin-top:8px">
+        <div>
+          <h3 style="margin-bottom:8px">What it measures</h3>
+          <ul style="font-size:13px">
+            <li>How fast the system acknowledges deletion</li>
+            <li>Whether deletion is synchronous (blocks until done) or deferred (marks for GC)</li>
+            <li>Tested at c1-c16 on small objects</li>
+          </ul>
+        </div>
+        <div>
+          <h3 style="margin-bottom:8px">Real-world scenarios</h3>
+          <table class="cmp-table">
+            <tbody>
+              <tr><td><span class="tag tag-green">DELETE c1</span></td><td>User deletes a file from their cloud drive</td></tr>
+              <tr><td><span class="tag tag-amber">DELETE c16</span></td><td>Retention policy engine purging 16 expired objects per second</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <div class="card" style="margin-top:12px;border-left:3px solid var(--amber)">
+        <p style="font-size:12.5px"><strong>Key finding:</strong> RustFs faster at c1 (45 vs 29 ops/s) — raw disk write beats Raft consensus. But Ozone 3x faster at c16 (556 vs 183 ops/s) because it defers actual block deletion to background GC and just appends to Raft WAL. For batch cleanup workloads, Ozone is significantly better.</p>
+      </div>
+    </div>
+  </details>
+
+  <!-- Advanced Scenarios -->
+  <div class="section-title" style="font-size:16px;margin-top:36px">Advanced Scenarios — Stress, Reliability &amp; Edge Cases</div>
+
+  <details>
+    <summary>Read-After-Write — Immediate consistency test</summary>
+    <div class="detail-body">
+      <div class="grid grid-2" style="margin-top:8px">
+        <div>
+          <h3 style="margin-bottom:8px">What it measures</h3>
+          <ul style="font-size:13px">
+            <li>PUT an object → immediately GET the same object → does the data come back?</li>
+            <li>Tests the fundamental consistency guarantee of the storage system</li>
+            <li>Run at c1, c4, c16 to test under varying load</li>
+          </ul>
+        </div>
+        <div>
+          <h3 style="margin-bottom:8px">Real-world scenarios</h3>
+          <table class="cmp-table">
+            <tbody>
+              <tr><td><span class="tag tag-red">Critical</span></td><td>User uploads a profile photo → refreshes page → expects to see it immediately</td></tr>
+              <tr><td><span class="tag tag-red">Critical</span></td><td>Payment receipt written to storage → confirmation page reads it back → must succeed</td></tr>
+              <tr><td><span class="tag tag-amber">Important</span></td><td>CI/CD pipeline writes build artifact → next stage reads it → pipeline fails if missing</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <div class="card" style="margin-top:12px;border-left:3px solid var(--red)">
+        <p style="font-size:12.5px"><strong>Key finding:</strong> RustFs 100% success. Ozone 0% success — even with a <strong>single OM</strong> (no multi-OM routing). Recently written keys are not visible for an indeterminate period, likely due to Ratis async apply or S3G connection pooling (root cause not definitively identified — see Consistency tab for full analysis). <strong>Any application that writes then reads must implement retry logic or client-side caching with Ozone's default S3G configuration.</strong></p>
+      </div>
+    </div>
+  </details>
+
+  <details>
+    <summary>Overwrite Storm — Concurrent writes to the same key</summary>
+    <div class="detail-body">
+      <div class="grid grid-2" style="margin-top:8px">
+        <div>
+          <h3 style="margin-bottom:8px">What it measures</h3>
+          <ul style="font-size:13px">
+            <li>Multiple threads writing different data to the SAME key simultaneously</li>
+            <li>Tests conflict resolution, locking, and data integrity under contention</li>
+            <li>Success = last writer wins AND subsequent reads return a valid version</li>
+          </ul>
+        </div>
+        <div>
+          <h3 style="margin-bottom:8px">Real-world scenarios</h3>
+          <table class="cmp-table">
+            <tbody>
+              <tr><td><span class="tag tag-red">Critical</span></td><td>Two users edit and save the same shared document simultaneously</td></tr>
+              <tr><td><span class="tag tag-amber">Important</span></td><td>Config service — multiple deployers updating the same config key</td></tr>
+              <tr><td><span class="tag tag-amber">Important</span></td><td>Counter/state objects updated by multiple workers (e.g., progress tracking)</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <div class="card" style="margin-top:12px;border-left:3px solid var(--red)">
+        <p style="font-size:12.5px"><strong>Key finding:</strong> RustFs ~93% success at c16, ~70% at c64. Ozone ~0% at both. Ozone uses optimistic locking (expectedGeneration) which rejects all concurrent writers. <strong>Applications using Ozone must implement application-level locking or CAS retry loops for shared mutable objects.</strong></p>
+      </div>
+    </div>
+  </details>
+
+  <details>
+    <summary>Mixed Workloads — Read-heavy &amp; write-heavy mixes</summary>
+    <div class="detail-body">
+      <div class="grid grid-2" style="margin-top:8px">
+        <div>
+          <h3 style="margin-bottom:8px">What it measures</h3>
+          <ul style="font-size:13px">
+            <li><strong>Read-heavy (80/20):</strong> 80% GET + 10% PUT + 10% HEAD</li>
+            <li><strong>Write-heavy (20/80):</strong> 20% GET + 70% PUT + 10% HEAD</li>
+            <li>Simulates realistic production traffic patterns, not isolated operations</li>
+            <li>Tests whether read and write paths interfere with each other</li>
+          </ul>
+        </div>
+        <div>
+          <h3 style="margin-bottom:8px">Real-world scenarios</h3>
+          <table class="cmp-table">
+            <tbody>
+              <tr><td><span class="tag tag-green">Read-heavy</span></td><td>Social media — most users browse (read), few post (write). CDN origin with occasional new content.</td></tr>
+              <tr><td><span class="tag tag-amber">Write-heavy</span></td><td>Log ingestion, IoT telemetry, security camera footage — continuous writes, occasional reads for investigation.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <div class="card" style="margin-top:12px;border-left:3px solid var(--amber)">
+        <p style="font-size:12.5px"><strong>Key finding:</strong> Both systems perform similarly on mixed workloads (~185 ops/s read-heavy, ~53 ops/s write-heavy). The bottleneck becomes the PUT path for write-heavy mixes, which limits both systems equally. The Ozone InputStream variant drops to 42 ops/s at write-heavy c64 — 20% slower than ofPath.</p>
+      </div>
+    </div>
+  </details>
+
+  <details>
+    <summary>Burst Test — 30-second high-pressure spike</summary>
+    <div class="detail-body">
+      <div class="grid grid-2" style="margin-top:8px">
+        <div>
+          <h3 style="margin-bottom:8px">What it measures</h3>
+          <ul style="font-size:13px">
+            <li>How the system handles a sudden traffic spike (c64 PUT for 30 seconds)</li>
+            <li>No warmup — cold start straight into maximum concurrency</li>
+            <li>Tests whether coordinators (OM, SCM) can handle sudden load</li>
+          </ul>
+        </div>
+        <div>
+          <h3 style="margin-bottom:8px">Real-world scenarios</h3>
+          <table class="cmp-table">
+            <tbody>
+              <tr><td><span class="tag tag-red">Critical</span></td><td>Flash sale — thousands of users uploading order confirmations simultaneously</td></tr>
+              <tr><td><span class="tag tag-red">Critical</span></td><td>Breaking news — media outlets uploading photos/videos in a 30-second window</td></tr>
+              <tr><td><span class="tag tag-amber">Important</span></td><td>Cron job storm — 64 scheduled jobs all starting at midnight, writing results</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <div class="card" style="margin-top:12px;border-left:3px solid var(--red)">
+        <p style="font-size:12.5px"><strong>Key finding:</strong> RustFs: 37 ops/s, 1,152 ops completed. Ozone ofPath: 7 ops/s, 353 ops. Ozone InputStream: <strong>0 ops/s — complete failure</strong>. Ozone's OM Raft group + SCM block allocation cannot ramp up fast enough for burst traffic. RustFs's peer-to-peer design handles burst gracefully because there is no central coordinator to overwhelm.</p>
+      </div>
+    </div>
+  </details>
+
+  <details>
+    <summary>Soak Test — 1-hour sustained load</summary>
+    <div class="detail-body">
+      <div class="grid grid-2" style="margin-top:8px">
+        <div>
+          <h3 style="margin-bottom:8px">What it measures</h3>
+          <ul style="font-size:13px">
+            <li>1 hour of sustained mixed workload at c16</li>
+            <li>Tests for memory leaks, GC degradation, connection pool exhaustion</li>
+            <li>Tests whether the system maintains performance or degrades over time</li>
+            <li>Measures long-term success rate — do errors accumulate?</li>
+          </ul>
+        </div>
+        <div>
+          <h3 style="margin-bottom:8px">Real-world scenarios</h3>
+          <table class="cmp-table">
+            <tbody>
+              <tr><td><span class="tag tag-red">Critical</span></td><td>Production service running 24/7 — will it degrade after hours? Days?</td></tr>
+              <tr><td><span class="tag tag-amber">Important</span></td><td>Overnight batch processing — 6-hour ETL job that must not fail midway</td></tr>
+              <tr><td><span class="tag tag-amber">Important</span></td><td>Capacity planning — extrapolating 1-hour numbers to monthly resource needs</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <div class="card" style="margin-top:12px;border-left:3px solid var(--amber)">
+        <p style="font-size:12.5px"><strong>Key finding:</strong> RustFs: 186 ops/s, <strong>100% success rate</strong>, 671K successful ops. Ozone: 1,226 ops/s, <strong>80% success rate</strong>, 3.53M successful ops (5.3x more than RustFs). Ozone loses 1 in 5 operations but still completes far more work. <strong>Important:</strong> Benchmarks run with maxAttempts=1 (no retries). The impact of retry logic on Ozone's success rate was <strong>not tested</strong>. Measured result: <strong>RustFs = zero failures at any load; Ozone = 20% failure rate sustained over 1 hour at c16</strong>.</p>
+      </div>
+    </div>
+  </details>
+
+  <details>
+    <summary>Cold Read — Reading uncached objects</summary>
+    <div class="detail-body">
+      <div class="grid grid-2" style="margin-top:8px">
+        <div>
+          <h3 style="margin-bottom:8px">What it measures</h3>
+          <ul style="font-size:13px">
+            <li>Reading objects that are NOT in any cache (page cache, block cache)</li>
+            <li>Forces disk I/O on every read — measures raw storage backend speed</li>
+            <li>Tested at small (3MB) and medium (10MB) with c1 and c4</li>
+          </ul>
+        </div>
+        <div>
+          <h3 style="margin-bottom:8px">Real-world scenarios</h3>
+          <table class="cmp-table">
+            <tbody>
+              <tr><td><span class="tag tag-amber">Important</span></td><td>Disaster recovery — reading backups that haven't been accessed in months</td></tr>
+              <tr><td><span class="tag tag-green">Common</span></td><td>Long-tail content — accessing rarely viewed images or documents</td></tr>
+              <tr><td><span class="tag tag-amber">Important</span></td><td>After system restart — all caches are empty, first requests hit disk</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <div class="card" style="margin-top:12px;border-left:3px solid var(--amber)">
+        <p style="font-size:12.5px"><strong>Key finding:</strong> Very low throughput for both systems (~0.2 ops/s at c1). <strong>Note:</strong> RustFs Path shows ~44% success while RustFs InputStream shows 100% on the same scenario — this is a <strong>test setup artifact</strong> (Path content-source failed to locate pre-seeded objects; zero-latency failures confirm 404s, not timeouts). Ozone cold-read results are similarly unreliable. Cold reads are inherently slow — the key takeaway is that <strong>warm cache (page cache) is what makes Ozone's GET fast</strong>; without it, both systems are disk-bound.</p>
+      </div>
+    </div>
+  </details>
+
+  <!-- Decision Matrix -->
+  <div class="section-title" style="font-size:16px;margin-top:36px">Workload Characteristics — Measured Advantages Per Pattern</div>
+  <p style="font-size:12px;color:var(--text-dim);margin-bottom:12px">This matrix maps workload patterns to measured benchmark results. "Advantage" indicates which system showed stronger measured performance for that pattern's dominant operations. All numbers are from the 3-node cluster benchmark.</p>
+  <div style="overflow-x:auto">
+    <table class="cmp-table">
+      <thead><tr><th>Workload Pattern</th><th>Measured Advantage</th><th>Supporting Data</th></tr></thead>
+      <tbody>
+        <tr><td>Read-heavy, high concurrency (CDN origin, media serving)</td><td><span class="winner winner-ozone">Ozone</span></td><td>GET 5,915 vs 1,197 ops/s at c64; LIST 245 vs 4 ops/s at c16</td></tr>
+        <tr><td>Metadata-heavy (listing, browsing, stat checks)</td><td><span class="winner winner-ozone">Ozone</span></td><td>LIST 20-60x faster; HEAD 6.4x faster at c64 (10,188 vs 1,585 ops/s)</td></tr>
+        <tr><td>Write-intensive, reliability-critical (ingest, events)</td><td><span class="winner winner-rustfs">RustFs</span></td><td>100% PUT success at all sizes/concurrencies; Ozone 67-100% (measured)</td></tr>
+        <tr><td>Write-then-immediately-read (transactional)</td><td><span class="winner winner-rustfs">RustFs</span></td><td>100% read-after-write success; Ozone 0% (measured at c1-c16)</td></tr>
+        <tr><td>Bulk delete / retention policy</td><td><span class="winner winner-ozone">Ozone</span></td><td>DELETE 556 vs 183 ops/s at c16 (3x); note: Ozone GC is deferred</td></tr>
+        <tr><td>Large file reads, high concurrency</td><td><span class="winner winner-ozone">Ozone</span></td><td>GET scales linearly c16→c64 (page cache); RustFs plateaus (O_DIRECT disk saturation)</td></tr>
+        <tr><td>Sustained load, zero-failure requirement</td><td><span class="winner winner-rustfs">RustFs</span></td><td>1hr soak: 100% success, flat throughput; Ozone: 80% success, p99 grows over time</td></tr>
+        <tr><td>Concurrent overwrites (mutable objects)</td><td><span class="winner winner-rustfs">RustFs</span></td><td>~93% overwrite success at c16; Ozone 0% (optimistic locking rejects concurrent writers)</td></tr>
+        <tr><td>Burst traffic (sudden load spike)</td><td><span class="winner winner-rustfs">RustFs</span></td><td>Burst test: 37 ops/s vs 7 (Path) or 0 (IS); no central coordinator to saturate</td></tr>
+        <tr><td>Low concurrency, latency-sensitive</td><td><span class="winner winner-rustfs">RustFs</span></td><td>PUT c1: 13.2 vs 11.1 ops/s; GET c1: 156 vs 93 ops/s; no OM round-trip overhead</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+</div>
+
+<!-- ─── ARCHITECTURE TAB ──────────────────────────────────────────────────── -->
+<div class="tab-panel" id="panel-arch">
+  <div class="section-title">Architecture Overview</div>
+  <div class="arch-compare">
+    <div class="arch-card">
+      <h4><span class="dot dot-rustfs"></span> RustFs (MinIO-inspired)</h4>
+      <pre>┌──────────────────────────────────────┐
+│         S3 API Layer (HTTP)          │
+├──────────────────────────────────────┤
+│  Object Manager (hash → erasure set) │
+├──────────────────────────────────────┤
+│  Erasure Coding Engine (RS 4+4)      │
+│  Reed-Solomon + HighwayHash256 checksums     │
+├──────────────────────────────────────┤
+│  Storage Layer (XFS/ext4 + O_DIRECT) │
+│  xl.meta + part.N on each drive      │
+└──────────────────────────────────────┘
+      ↕ peer-to-peer (no master)
+┌─────────┐ ┌─────────┐ ┌─────────┐
+│ Node 1  │ │ Node 2  │ │ Node 3  │
+│ drives  │ │ drives  │ │ drives  │
+└─────────┘ └─────────┘ └─────────┘</pre>
+      <ul>
+        <li><strong>Metadata:</strong> None — filesystem IS the index. xl.meta on each drive.</li>
+        <li><strong>Placement:</strong> Deterministic hash(key) → erasure Set</li>
+        <li><strong>Replication:</strong> Erasure coding (e.g., 4 data + 4 parity)</li>
+        <li><strong>Consistency:</strong> Strong (fdatasync + same-drive reads)</li>
+        <li><strong>Maturity:</strong> v1.0.0-alpha (fork of MinIO, a production-grade system). Core storage engine is battle-tested; fork-specific changes are alpha.</li>
+      </ul>
+    </div>
+    <div class="arch-card">
+      <h4><span class="dot dot-ozone"></span> Apache Ozone (EC mode: RS-6-3-1024k)</h4>
+      <pre>┌──────────────────────────────────────┐
+│    S3 Gateway (stateless HTTP→RPC)   │
+│    EC encode/decode happens here     │
+├───────────────┬──────────────────────┤
+│ Ozone Manager │  SCM (Storage Mgr)   │
+│ (RocksDB +    │  (EC block group     │
+│  Raft HA)     │   allocation)        │
+├───────────────┴──────────────────────┤
+│          Datanode Layer              │
+│  EC block groups (9 containers each) │
+│  6 data + 3 parity, 1024KB stripe   │
+└──────────────────────────────────────┘
+      ↕ parallel chunk I/O (no Raft for data)
+┌──────────┐ ┌──────────┐ ┌──────────┐
+│  DN 1    │ │  DN 2    │ │  DN 3    │
+│ /rack-A  │ │ /rack-B  │ │ /rack-C  │
+│ 3 chunks │ │ 3 chunks │ │ 3 chunks │
+└──────────┘ └──────────┘ └──────────┘</pre>
+      <ul>
+        <li><strong>Metadata:</strong> RocksDB in Ozone Manager — sorted, indexed, cached</li>
+        <li><strong>Placement:</strong> SCM allocates EC block groups → 9 blocks across 3 racks</li>
+        <li><strong>Data protection:</strong> Erasure coding RS-6-3 (6 data + 3 parity) — tolerates 3 block failures</li>
+        <li><strong>Metadata HA:</strong> OM uses Raft (Apache Ratis) for ALL metadata mutations — data path is EC, NOT Raft</li>
+        <li><strong>Consistency:</strong> Eventual (OM double-buffer async flush to RocksDB)</li>
+        <li><strong>Maturity:</strong> Production (Apache TLP, DiDi at petabyte scale)</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="section-title" style="margin-top:32px">Key Architectural Trade-offs</div>
+  <div style="overflow-x:auto">
+    <table class="cmp-table">
+      <thead><tr><th>Dimension</th><th>RustFs</th><th>Ozone</th><th>Impact</th></tr></thead>
+      <tbody>
+        <tr><td>Metadata store</td><td>None (filesystem dirs)</td><td>RocksDB (sorted LSM tree)</td><td>LIST: Ozone 20-60x faster</td></tr>
+        <tr><td>Write coordination</td><td>None (hash-based)</td><td>2× OM Raft (metadata) + parallel EC stripe (data)</td><td>PUT: RustFs 20-35% faster (OM Raft is the bottleneck)</td></tr>
+        <tr><td>Read fan-out</td><td>4+ drives (EC:4+4, local)</td><td>6 chunks across 3 DNs (EC:6+3, network)</td><td>GET c64: Ozone 5x — page cache + distributed I/O vs O_DIRECT local disk saturation</td></tr>
+        <tr><td>Metadata I/O per HEAD</td><td>8 disk reads (quorum)</td><td>1 RocksDB get (in-memory)</td><td>HEAD: Ozone 6.5x faster</td></tr>
+        <tr><td>Page cache usage</td><td>O_DIRECT (bypassed)</td><td>OS page cache active</td><td>Cold read identical, warm Ozone faster</td></tr>
+        <tr><td>Consistency model</td><td>Strong (fdatasync)</td><td>Eventual (double-buffer)</td><td>RAW: RustFs 100% vs Ozone 0%</td></tr>
+        <tr><td>Overwrite handling</td><td>Atomic xl.meta replace</td><td>Optimistic locking (updateID)</td><td>Concurrent overwrites: RustFs ~90% vs 0%</td></tr>
+        <tr><td>Central coordinator</td><td>None (peer-to-peer)</td><td>OM + SCM (Raft HA)</td><td>Burst: RustFs handles, Ozone bottlenecks</td></tr>
+        <tr><td>Delete mechanism</td><td>Tombstone + trash (5min)</td><td>WAL + background GC (60s)</td><td>DELETE c16: Ozone 3x faster</td></tr>
+        <tr><td>Checksum algorithm</td><td>HighwayHash256</td><td>CRC32</td><td>GET CPU: Ozone lighter verification</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ─── I/O PATH TAB ──────────────────────────────────────────────────── -->
+<div class="tab-panel" id="panel-iopath">
+
+  <div class="section-title">ofPath vs InputStream — How Data Flows Through The JVM</div>
+
+  <div class="arch-compare">
+    <div class="arch-card">
+      <h4 style="color:var(--green)">ofPath (Zero-Copy)</h4>
+      <pre>
+Client PUT:
+  File on disk
+    ↓ OS sendfile() / FileChannel.transferTo()
+    ↓ kernel space → NIC directly
+    ↓ (data NEVER enters JVM heap)
+    → Network → Storage backend
+
+Client GET:
+  Storage backend → Network
+    ↓ FileChannel.transferFrom()
+    ↓ NIC → kernel space → File on disk
+    ↓ (data NEVER enters JVM heap)
+    → File written
+      </pre>
+      <ul>
+        <li><span class="tag tag-green">Zero heap allocation</span> Data stays in kernel buffers — JVM heap untouched</li>
+        <li><span class="tag tag-green">No GC pressure</span> Nothing allocated = nothing to garbage collect</li>
+        <li><span class="tag tag-green">No byte[] copies</span> OS handles transfer directly (DMA where available)</li>
+        <li><span class="tag tag-amber">Requires file</span> Data must be on disk — can't stream from memory</li>
+      </ul>
+    </div>
+    <div class="arch-card">
+      <h4 style="color:var(--blue)">InputStream (Traditional I/O)</h4>
+      <pre>
+Client PUT:
+  File / byte source
+    ↓ InputStream.read(byte[4MB])
+    ↓ copies 4MB chunk into JVM HEAP
+    ↓ HttpClient writes byte[] to socket
+    ↓ (each chunk: allocate → copy → send → GC)
+    → Network → Storage backend
+
+Client GET:
+  Storage backend → Network
+    ↓ InputStream.read(byte[4MB])
+    ↓ copies into JVM HEAP byte[]
+    ↓ write byte[] to OutputStream / File
+    ↓ (each chunk: allocate → copy → write → GC)
+    → File written
+      </pre>
+      <ul>
+        <li><span class="tag tag-red">Heap allocation per chunk</span> 4MB byte[] allocated for every chunk read/write</li>
+        <li><span class="tag tag-red">GC pressure</span> Short-lived byte[] arrays → frequent young-gen GC</li>
+        <li><span class="tag tag-red">2 copies per chunk</span> disk → heap → socket (PUT) or socket → heap → disk (GET)</li>
+        <li><span class="tag tag-green">Flexible</span> Works with any data source — memory, streams, transformations</li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- GC Impact Charts -->
+  <div class="section-title">GC Overhead — Path vs InputStream (Real Measurements)</div>
+  <div class="grid grid-2">
+    <div class="card"><h3>GC Overhead % — PUT Scenarios</h3><div class="chart-wrap"><canvas id="chartGcPut"></canvas></div></div>
+    <div class="card"><h3>GC Overhead % — GET / HEAD c64</h3><div class="chart-wrap"><canvas id="chartGcGet"></canvas></div></div>
+    <div class="card"><h3>GC Count — PUT Small c64 (5min)</h3><div class="chart-wrap"><canvas id="chartGcCount"></canvas></div></div>
+    <div class="card"><h3>Peak Heap MB — PUT Large c16</h3><div class="chart-wrap"><canvas id="chartHeapPut"></canvas></div></div>
+  </div>
+
+  <!-- Soak Test Comparison -->
+  <div class="section-title">Soak Test (1 Hour) — Where InputStream Costs Compound</div>
+  <div class="grid grid-2">
+    <div class="card"><h3>GC Overhead % — 1hr Soak</h3><div class="chart-wrap"><canvas id="chartSoakGc"></canvas></div></div>
+    <div class="card"><h3>Peak Heap MB — 1hr Soak</h3><div class="chart-wrap"><canvas id="chartSoakHeap"></canvas></div></div>
+  </div>
+
+  <!-- Detailed Metrics Table -->
+  <div class="section-title">Full Metrics Comparison — Key Scenarios</div>
+  <div style="overflow-x:auto">
+    <table class="cmp-table" id="ioPathTable">
+      <thead>
+        <tr>
+          <th>Scenario</th>
+          <th>Metric</th>
+          <th style="color:var(--green)">RustFs Path</th>
+          <th style="color:#6ee7b7">RustFs IS</th>
+          <th style="color:var(--blue)">Ozone Path</th>
+          <th style="color:#93c5fd">Ozone IS</th>
+          <th>Winner</th>
+        </tr>
+      </thead>
+      <tbody id="ioPathBody"></tbody>
+    </table>
+  </div>
+
+  <!-- Analysis Cards -->
+  <div class="section-title">Why Does This Matter?</div>
+  <div class="grid grid-2">
+    <div class="card" style="border-left:3px solid var(--green)">
+      <h3 style="color:var(--green)">When ofPath Wins Big</h3>
+      <ul style="font-size:13px">
+        <li><strong>Large files (64MB):</strong> InputStream allocates 16× 4MB byte[] per object → massive GC pressure. Peak heap 1,776MB (IS) vs 593MB (Path) for RustFs PUT large c16</li>
+        <li><strong>Long-running workloads:</strong> Soak test: 10,446 GC events (IS) vs 3,990 (Path) for RustFs — 2.6x more GC pauses over 1 hour</li>
+        <li><strong>High concurrency reads:</strong> Ozone GET c64: ofPath 5,915 ops/s vs InputStream 5,230 ops/s — 13% faster because less GC interference</li>
+        <li><strong>Tail latency:</strong> PUT small c64: stdDev 241ms (Path) vs 345ms (IS) for RustFs — InputStream has more latency jitter from GC pauses</li>
+      </ul>
+    </div>
+    <div class="card" style="border-left:3px solid var(--blue)">
+      <h3 style="color:var(--blue)">When InputStream Is Acceptable</h3>
+      <ul style="font-size:13px">
+        <li><strong>Small files, low concurrency:</strong> PUT small c1: almost identical ops/s. GC overhead is negligible when volume is low</li>
+        <li><strong>Metadata operations:</strong> HEAD and LIST don't transfer data — I/O path doesn't matter for metadata-only ops</li>
+        <li><strong>When data is in-memory:</strong> If data comes from a transformation pipeline (e.g., compression, encryption), you already have byte[] — ofPath adds a disk write</li>
+        <li><strong>Short benchmarks:</strong> GC differences only compound over time. A 60-second test barely shows the gap</li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- The core mechanism -->
+  <div class="arch-section">
+    <h2>The Core Mechanism — Why GC Matters For Throughput</h2>
+    <div class="arch-compare">
+      <div class="arch-card">
+        <h4>ofPath: Steady State</h4>
+        <pre>
+Thread 1: ──────────────────────────── (no GC)
+Thread 2: ──────────────────────────── (no GC)
+Thread 3: ──────────────────────────── (no GC)
+  ...
+Thread 16: ─────────────────────────── (no GC)
+
+Heap: ▓░░░░░░░░░░░░░░░░░░░ (low, stable)
+       ↑ only metadata objects
+        </pre>
+        <ul>
+          <li>All threads run uninterrupted</li>
+          <li>Heap stays low → rare young-gen GC</li>
+          <li>No stop-the-world pauses</li>
+          <li>p99 latency is predictable</li>
+        </ul>
+      </div>
+      <div class="arch-card">
+        <h4>InputStream: GC Stalls</h4>
+        <pre>
+Thread 1: ────────┃STOP┃──────────── (GC pause)
+Thread 2: ────────┃STOP┃──────────── (GC pause)
+Thread 3: ────────┃STOP┃──────────── (GC pause)
+  ...
+Thread 16: ───────┃STOP┃──────────── (GC pause)
+
+Heap: ▓▓▓▓▓▓▓▓░░▓▓▓▓▓▓▓▓░░ (sawtooth)
+       ↑ 4MB byte[] per chunk, per thread
+       ↑ fills Eden → triggers minor GC
+        </pre>
+        <ul>
+          <li>16 threads × 4MB chunks = 64MB/cycle into Eden</li>
+          <li>Eden fills in milliseconds → frequent minor GC</li>
+          <li>ALL threads pause during GC (even if only 1ms)</li>
+          <li>At c64: 64 threads paused → latency spikes in p99</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <!-- Impact summary -->
+  <div class="card" style="margin-top:20px;border-left:3px solid var(--amber)">
+    <h3 style="color:var(--amber)">Impact Summary by System</h3>
+    <table class="cmp-table" style="margin-top:12px">
+      <thead><tr><th>System</th><th>ofPath→IS Throughput Drop</th><th>GC Overhead Increase</th><th>Peak Heap Increase</th><th>Verdict</th></tr></thead>
+      <tbody>
+        <tr>
+          <td>RustFs (PUT small c64)</td>
+          <td class="num">~0% (37.22 → 37.34)</td>
+          <td class="num worse">4x (0.09% → 0.36%)</td>
+          <td class="num worse">1.8x (575 → 1025 MB)</td>
+          <td>Throughput same, but GC overhead building</td>
+        </tr>
+        <tr>
+          <td>RustFs (PUT large c16)</td>
+          <td class="num">~0% (1.75 → 1.75)</td>
+          <td class="num worse">1.6x (0.18% → 0.28%)</td>
+          <td class="num worse">3.0x (593 → 1776 MB)</td>
+          <td>Heap triples — disaster waiting at longer durations</td>
+        </tr>
+        <tr>
+          <td>RustFs (Soak 1hr)</td>
+          <td class="num">~1% (186 → 185)</td>
+          <td class="num worse">2.9x (0.14% → 0.40%)</td>
+          <td class="num worse">4.9x (390 → 1916 MB)</td>
+          <td><span class="tag tag-red">Critical</span> GC time: 4.9s → 14.3s over 1 hour</td>
+        </tr>
+        <tr>
+          <td>Ozone (GET small c64)</td>
+          <td class="num worse">-12% (5915 → 5230)</td>
+          <td class="num worse">0.7x (0.18% → 0.13%)</td>
+          <td class="num worse">1.2x (1239 → 1458 MB)</td>
+          <td>Throughput visibly drops — 685 ops/s lost</td>
+        </tr>
+        <tr>
+          <td>Ozone (HEAD small c64)</td>
+          <td class="num worse">-11% (10188 → 9093)</td>
+          <td class="num worse">0.9x (0.21% → 0.18%)</td>
+          <td class="num worse">1.3x (1274 → 1649 MB)</td>
+          <td>~1,100 ops/s lost at highest concurrency</td>
+        </tr>
+        <tr>
+          <td>Ozone (Soak 1hr)</td>
+          <td class="num worse">-19% (1226 → 991)</td>
+          <td class="num worse">1.5x (0.44% → 0.66%)</td>
+          <td class="num worse">1.5x (540 → 830 MB)</td>
+          <td><span class="tag tag-red">Critical</span> 235 ops/s lost over sustained load</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+</div>
+
+<!-- ─── TEST SETUP TAB ─────────────────────────────────────────────────── -->
+<div class="tab-panel" id="panel-setup">
+
+  <div class="section-title">Cluster Topology</div>
+  <div class="arch-compare">
+    <div class="arch-card">
+      <h4><span class="dot dot-rustfs"></span> RustFs Cluster</h4>
+      <pre>        Nginx LB (least_conn)
+        port 9000 (S3 API)
+      ┌─────────┼─────────┐
+      ↓         ↓         ↓
+┌───────────┐┌───────────┐┌───────────┐
+│l3c-auto12 ││l3c-auto13 ││l3c-auto14 │
+│  RustFs   ││  RustFs   ││  RustFs   │
+│ v1.0.0-   ││ v1.0.0-   ││ v1.0.0-   │
+│ alpha.85  ││ alpha.85  ││ alpha.85  │
+├───────────┤├───────────┤├───────────┤
+│ /data/    ││ /data/    ││ /data/    │
+│  disk1    ││  disk1    ││  disk1    │
+│  disk2    ││  disk2    ││  disk2    │
+│  disk3    ││  disk3    ││  disk3    │
+│  disk4    ││  disk4    ││  disk4    │
+└───────────┘└───────────┘└───────────┘
+ 3 nodes × 4 disks = 12 drives total
+ Host networking, Docker containers</pre>
+      <ul>
+        <li><strong>Nodes:</strong> 3 Ubuntu machines (l3c-auto12, l3c-auto13, l3c-auto14)</li>
+        <li><strong>Disks:</strong> 4 per node = 12 total</li>
+        <li><strong>Version:</strong> RustFs v1.0.0-alpha.85</li>
+        <li><strong>Networking:</strong> Host mode (no Docker overlay overhead)</li>
+        <li><strong>Load balancer:</strong> Nginx with least_conn strategy</li>
+        <li><strong>Erasure set:</strong> 12 drives → EC 4+4 (4 data + 4 parity) with 4 drives per set</li>
+        <li><strong>Credentials:</strong> rustfsadmin / rustfsadmin</li>
+      </ul>
+    </div>
+    <div class="arch-card">
+      <h4><span class="dot dot-ozone"></span> Ozone Cluster</h4>
+      <pre>  Test Client (10.71.24.61)
+   + S3 Gateway (port 9878)
+          │
+          ↓ HTTP (S3 API)
+  ┌───────┼───────────────────────────┐
+  ↓                                   ↓
+┌─────────────────┐   ┌─────────────────┐
+│  10.162.41.246   │   │  10.162.41.247   │
+│   (l3c-auto12)   │   │   (l3c-auto13)   │
+│    /rack-A       │   │    /rack-B       │
+├─────────────────┤   ├─────────────────┤
+│   SCM            │   │   OM (single)    │
+│   DN-1 DN-2 DN-3 │   │   DN-4 DN-5 DN-6 │
+├─────────────────┤   ├─────────────────┤
+│ /data/ozone/hdds │   │ /data/ozone/hdds │
+└─────────────────┘   └─────────────────┘
+          ↓
+┌─────────────────┐
+│  10.162.120.12x  │
+│   (l3c-auto14)   │
+│    /rack-C       │
+├─────────────────┤
+│   DN-7 DN-8 DN-9 │
+├─────────────────┤
+│ /data/ozone/hdds │
+└─────────────────┘
+ 3 machines × 3 DNs each = 9 DNs total
+ EC 6+3 needs 9 DNs (6 data + 3 parity)
+ Docker containers, host networking</pre>
+      <ul>
+        <li><strong>Nodes:</strong> 3 machines — l3c-auto12 (SCM), l3c-auto13 (OM), l3c-auto14 (S3G + test client)</li>
+        <li><strong>Topology:</strong> 3 racks — /rack-A, /rack-B, /rack-C (1 machine per rack)</li>
+        <li><strong>OM:</strong> Single Ozone Manager on 10.162.41.247 — <strong>NO Raft HA, NO followers</strong></li>
+        <li><strong>SCM:</strong> Single Storage Container Manager on 10.162.41.246</li>
+        <li><strong>Datanodes:</strong> 9 total (3 per machine) — required for EC 6+3 (min 9 DNs in safemode)</li>
+        <li><strong>S3 Gateway:</strong> Stateless, on test client machine (10.71.24.61)</li>
+        <li><strong>EC Policy:</strong> rs-6-3-1024k (6 data + 3 parity, 1024KB stripe)</li>
+        <li><strong>Version:</strong> Apache Ozone 1.4.0</li>
+        <li><strong>Security:</strong> Disabled (ozone.security.enabled=false)</li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- Test Machine Environment -->
+  <div class="section-title">Test Machine Environment (Measured)</div>
+  <div class="card" style="margin-bottom:20px;border-left:3px solid var(--accent)">
+    <p style="font-size:12px;color:var(--text-dim);margin-bottom:10px">All three cluster nodes and the test client run on the <strong>same physical hardware profile</strong>. These specs directly affect benchmark results — especially disk speed for RustFs LIST and network for all throughput tests.</p>
+    <table class="cmp-table" style="font-size:12.5px">
+      <thead><tr><th>Component</th><th>Specification</th><th>Measured Performance</th><th>Impact on Results</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><strong>CPU</strong></td>
+          <td>Intel i7-11850H @ 2.50 GHz, 16 cores</td>
+          <td>Peak system load: 96.4%</td>
+          <td>System CPU maxed during high-concurrency tests — server + client compete for cores</td>
+        </tr>
+        <tr>
+          <td><strong>RAM</strong></td>
+          <td>15.3 GB physical</td>
+          <td>JVM heap: 2-4 GB, page cache: ~10 GB available</td>
+          <td>Limited page cache benefits Ozone less than enterprise (256 GB) would. RustFs unaffected (O_DIRECT).</td>
+        </tr>
+        <tr>
+          <td><strong>Disk (write)</strong></td>
+          <td>SATA SSD (~400 MB/s)</td>
+          <td><strong>398 MB/s</strong> sequential write (256 MB test, fsync)</td>
+          <td>Consistent with SATA SSD (not NVMe, which would be 2,000+ MB/s). Not the bottleneck — network saturates at 112 MB/s first. Shared disk between client + server containers on each machine.</td>
+        </tr>
+        <tr>
+          <td><strong>Disk (read)</strong></td>
+          <td>SATA SSD (~500 MB/s actual)</td>
+          <td><strong>7,093 MB/s</strong> reported <span class="tag tag-amber">⚠ page cache</span></td>
+          <td class="fail"><strong>Misleading measurement.</strong> 256 MB test file fits in 15.3 GB RAM → OS serves from page cache, not disk. Write speed (398 MB/s) confirms SATA SSD. Actual sequential read: ~500 MB/s. Actual random 4K IOPS: ~50-100K.</td>
+        </tr>
+        <tr>
+          <td><strong>Network</strong></td>
+          <td>eth0, 1 GbE (1000 Mbps)</td>
+          <td><strong>112 MB/s</strong> sustained (89.4% of 125 MB/s theoretical)</td>
+          <td class="fail"><strong>Primary bottleneck.</strong> All throughput tests saturate at ~112 MB/s. Prevents measuring actual storage backend limits.</td>
+        </tr>
+        <tr>
+          <td><strong>OS</strong></td>
+          <td>Linux 6.14.0-24-generic, amd64</td>
+          <td>—</td>
+          <td>Modern kernel with io_uring, recent scheduler improvements</td>
+        </tr>
+        <tr>
+          <td><strong>JVM</strong></td>
+          <td>OpenJDK 17.0.18 (G1 GC)</td>
+          <td>GC overhead: 0.08% (RustFs) to 3.76% (Ozone)</td>
+          <td>G1 GC performs well at this heap size. May need ZGC at enterprise scale (32 GB+ heaps)</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <details style="background:var(--surface);margin-bottom:14px">
+    <summary style="color:var(--amber)"><span class="tag tag-amber">Disk Speed Impact</span> Would better disks improve RustFs LIST?</summary>
+    <div class="detail-body">
+      <p style="font-size:13px;margin:8px 0"><strong>Measured:</strong> RustFs LIST uses only <strong>0.6-1.6 MB/s peak disk I/O</strong> despite having a 7,093 MB/s read disk. The bottleneck is NOT sequential disk throughput — it's <strong>metadata read latency</strong>.</p>
+      <p style="font-size:13px;margin:8px 0">RustFs LIST walks filesystem directories via <code>readdir()</code> syscalls, reading inodes and <code>xl.meta</code> files — small, random I/O operations. What matters is <strong>random 4K IOPS</strong>, not sequential MB/s:</p>
+      <table class="cmp-table" style="margin-top:8px;font-size:12.5px">
+        <thead><tr><th>Disk Type</th><th>Random 4K Read IOPS</th><th>Expected LIST Impact</th></tr></thead>
+        <tbody>
+          <tr><td>HDD (7200 RPM)</td><td class="num">100-200</td><td>Would make LIST even slower — each readdir() blocks on seek</td></tr>
+          <tr><td>SATA SSD</td><td class="num">50,000-100,000</td><td>Current test disk performance level</td></tr>
+          <tr><td>NVMe SSD</td><td class="num">500,000-1,000,000</td><td>Could improve xl.meta reads, but the <strong>serialized metacache walker</strong> is the real limit (4-7 ops/s regardless of disk speed)</td></tr>
+          <tr><td>Intel Optane</td><td class="num">500,000+ (lower latency)</td><td>Sub-10μs latency could help, but won't fix the fan-out architecture</td></tr>
+        </tbody>
+      </table>
+      <p style="font-size:12px;color:var(--text-dim);margin-top:10px"><strong>Conclusion:</strong> Better disks would provide modest improvement for RustFs LIST, but the fundamental limit is the <strong>serialized metacache walker + cross-node fan-out</strong> architecture, not disk speed. Even with infinitely fast disks, LIST must still walk directories across all drives in all erasure sets and merge results — a fundamentally O(N) operation. Ozone's RocksDB sorted-key seek is O(log N + K) regardless of disk type.</p>
+    </div>
+  </details>
+
+  <!-- EC Scheme Comparison -->
+  <div class="section-title">Erasure Coding Schemes — EC 4+4 vs EC 6+3</div>
+  <div class="arch-compare">
+    <div class="arch-card">
+      <h4><span class="dot dot-rustfs"></span> RustFs — EC 4+4 (Reed-Solomon)</h4>
+      <pre>
+3MB Object
+┌──────────────────────────────────────────┐
+│           Original Data (3MB)            │
+└──────────────────────────────────────────┘
+              ↓ RS Encode (split into 4)
+┌─────────┐┌─────────┐┌─────────┐┌─────────┐
+│ Data 1  ││ Data 2  ││ Data 3  ││ Data 4  │
+│ 750 KB  ││ 750 KB  ││ 750 KB  ││ 750 KB  │
+└─────────┘└─────────┘└─────────┘└─────────┘
+              ↓ Generate 4 parity
+┌─────────┐┌─────────┐┌─────────┐┌─────────┐
+│Parity 1 ││Parity 2 ││Parity 3 ││Parity 4 │
+│ 750 KB  ││ 750 KB  ││ 750 KB  ││ 750 KB  │
+└─────────┘└─────────┘└─────────┘└─────────┘
+ = 8 blocks × 750KB = 6MB on disk (2x)
+      </pre>
+      <table class="cmp-table" style="margin-top:10px">
+        <tbody>
+          <tr><td>Data blocks</td><td class="num">4</td></tr>
+          <tr><td>Parity blocks</td><td class="num">4</td></tr>
+          <tr><td>Total blocks</td><td class="num">8</td></tr>
+          <tr><td>Storage overhead</td><td class="num worse">2.0x (100% extra)</td></tr>
+          <tr><td>Block size (3MB obj)</td><td class="num">750 KB</td></tr>
+          <tr><td>Fault tolerance</td><td class="num better">4 blocks (50%)</td></tr>
+          <tr><td>Min reads for GET</td><td class="num better">4 blocks</td></tr>
+          <tr><td>Checksum</td><td class="num">HighwayHash256</td></tr>
+          <tr><td>Stripe size</td><td class="num">1 MiB</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="arch-card">
+      <h4><span class="dot dot-ozone"></span> Ozone — EC 6+3 (Reed-Solomon)</h4>
+      <pre>
+3MB Object
+┌──────────────────────────────────────────┐
+│           Original Data (3MB)            │
+└──────────────────────────────────────────┘
+        ↓ RS Encode (split into 6)
+┌──────┐┌──────┐┌──────┐┌──────┐┌──────┐┌──────┐
+│Data 1││Data 2││Data 3││Data 4││Data 5││Data 6│
+│500KB ││500KB ││500KB ││500KB ││500KB ││500KB │
+└──────┘└──────┘└──────┘└──────┘└──────┘└──────┘
+        ↓ Generate 3 parity
+       ┌──────┐┌──────┐┌──────┐
+       │Par 1 ││Par 2 ││Par 3 │
+       │500KB ││500KB ││500KB │
+       └──────┘└──────┘└──────┘
+ = 9 blocks × 500KB = 4.5MB on disk (1.5x)
+      </pre>
+      <table class="cmp-table" style="margin-top:10px">
+        <tbody>
+          <tr><td>Data blocks</td><td class="num">6</td></tr>
+          <tr><td>Parity blocks</td><td class="num">3</td></tr>
+          <tr><td>Total blocks</td><td class="num">9</td></tr>
+          <tr><td>Storage overhead</td><td class="num better">1.5x (50% extra)</td></tr>
+          <tr><td>Block size (3MB obj)</td><td class="num">500 KB</td></tr>
+          <tr><td>Fault tolerance</td><td class="num worse">3 blocks (33%)</td></tr>
+          <tr><td>Min reads for GET</td><td class="num worse">6 blocks</td></tr>
+          <tr><td>Checksum</td><td class="num">CRC32</td></tr>
+          <tr><td>Stripe size</td><td class="num">1024 KB</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Why EC scheme is NOT the main factor -->
+  <div class="card" style="margin-top:20px;border-left:3px solid var(--amber)">
+    <h3 style="color:var(--amber)">Does The EC Scheme Explain The Performance Gap?</h3>
+    <p style="font-size:13px;margin:10px 0"><strong>No.</strong> Total bytes read/written is similar (3MB in, 3MB out). The EC scheme differences are minor compared to architectural choices:</p>
+    <table class="cmp-table" style="margin-top:12px">
+      <thead><tr><th>Factor</th><th>Performance Impact</th><th>Explanation</th></tr></thead>
+      <tbody>
+        <tr><td>EC scheme (4+4 vs 6+3)</td><td><span class="tag tag-amber">Small</span></td><td>Same total I/O bytes, slight difference in parallelism and block count</td></tr>
+        <tr><td>O_DIRECT vs page cache</td><td><span class="tag tag-red">Huge</span></td><td>RustFs bypasses OS cache → every GET hits disk. Ozone uses page cache → hot data from RAM. Explains GET 5x gap at c64</td></tr>
+        <tr><td>No coordinator vs OM Raft</td><td><span class="tag tag-red">Huge</span></td><td>RustFs has zero coordination overhead. Ozone needs 2 Raft round-trips for every PUT. Explains PUT 20-35% gap + burst failures</td></tr>
+        <tr><td>Filesystem walk vs RocksDB</td><td><span class="tag tag-red">Huge</span></td><td>RustFs scans all directories to list. Ozone does sorted key seek. Explains LIST 20-60x gap</td></tr>
+        <tr><td>Storage overhead</td><td><span class="tag tag-green">Medium</span></td><td>RustFs uses 2x storage, Ozone uses 1.5x. At petabyte scale, 25% savings is significant</td></tr>
+        <tr><td>Fault tolerance</td><td><span class="tag tag-green">Medium</span></td><td>RustFs survives 50% block loss vs Ozone 33%. Both survive 1-node failure in this 3-node cluster</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- Read/Write path with EC -->
+  <div class="section-title">How EC Affects Read &amp; Write Paths</div>
+  <div class="arch-compare">
+    <div class="arch-card">
+      <h4>Write Path: EC Encoding</h4>
+      <pre>
+RustFs PUT (3MB):
+  hash(key) → erasure Set
+  → RS encode: 3MB → 4×750KB data + 4×750KB parity
+  → parallel write 8 shards to local drives
+  → fdatasync each shard
+  → quorum ACK → return 200
+  Total disk I/O: 6 MB    Network: 0 (local drives)
+
+Ozone PUT (3MB):
+  S3G → OM openKey [Raft WAL]
+  → RS encode: 3MB → 6×500KB data + 3×500KB parity
+  → parallel write 9 chunks to 3 datanodes
+    (3 chunks per DN, rack-aware placement)
+  → OM commitKey [Raft WAL]
+  → return 200
+  Total disk I/O: 4.5 MB  Network: 3 MB (cross-node)
+      </pre>
+      <ul>
+        <li>RustFs writes <strong>33% more bytes</strong> (6MB vs 4.5MB) but all <strong>local disk</strong></li>
+        <li>Ozone writes fewer bytes but needs <strong>cross-node network I/O</strong></li>
+        <li>Ozone also pays <strong>2 Raft round-trips</strong> (~10-20ms) for metadata</li>
+        <li>Net result: RustFs 20-35% faster at low-medium concurrency</li>
+      </ul>
+    </div>
+    <div class="arch-card">
+      <h4>Read Path: EC Decoding</h4>
+      <pre>
+RustFs GET (3MB):
+  hash(key) → erasure Set
+  → read 4 data shards (750KB each) from local drives
+    (O_DIRECT: bypasses page cache → always hits disk)
+  → HighwayHash256 verify each shard
+  → RS decode (if degraded) → stream 3MB to client
+  Disk reads: 4    Total I/O: 3 MB
+
+Ozone GET (3MB):
+  S3G → OM lookupKey [~3-5ms]
+  → read 6 data chunks (500KB each) sequentially from 3 datanodes
+    (page cache: hot chunks served from RAM)
+  → CRC32 verify each chunk
+  → reassemble → stream 3MB to client
+  Disk reads: 0-6  Total I/O: 3 MB (often from RAM)
+      </pre>
+      <ul>
+        <li>Both read <strong>3MB total</strong> — same bytes over the wire</li>
+        <li>RustFs: 4 reads × always disk = <strong>predictable but unscalable</strong></li>
+        <li>Ozone: 6 reads × often RAM = <strong>higher base cost, but scales with cache</strong></li>
+        <li>At c64: RustFs 256 disk reads saturate drives → <strong>1,197 ops/s plateau</strong></li>
+        <li>At c64: Ozone cache hits → <strong>5,915 ops/s and still climbing</strong></li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- Benchmark Configuration -->
+  <div class="section-title">Benchmark Configuration</div>
+  <div class="grid grid-2">
+    <div class="card">
+      <h3>Test Parameters</h3>
+      <table class="cmp-table">
+        <tbody>
+          <tr><td>Warmup</td><td class="num">10 seconds</td></tr>
+          <tr><td>Measurement duration</td><td class="num">5 minutes per scenario</td></tr>
+          <tr><td>Cooldown</td><td class="num">5 seconds</td></tr>
+          <tr><td>Soak test duration</td><td class="num">1 hour</td></tr>
+          <tr><td>Burst test duration</td><td class="num">30 seconds</td></tr>
+          <tr><td>Concurrency levels</td><td class="num">1, 4, 16, 64</td></tr>
+          <tr><td>Clients</td><td class="num">1</td></tr>
+          <tr><td>Threads per client</td><td class="num">16</td></tr>
+          <tr><td>Resilience mode</td><td class="num" style="color:var(--amber)">raw (maxAttempts: 1, no retries)</td></tr>
+          <tr><td>Data integrity</td><td class="num">Enabled (verify after read)</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="card">
+      <h3>File Size Tiers</h3>
+      <table class="cmp-table">
+        <tbody>
+          <tr><td>Tiny</td><td class="num">1 KB</td><td>Metadata-heavy (LIST only)</td></tr>
+          <tr><td>Small</td><td class="num">3 MB</td><td>Photo use case (most tests)</td></tr>
+          <tr><td>Medium</td><td class="num">10 MB</td><td>Document use case</td></tr>
+          <tr><td>Large</td><td class="num">64 MB</td><td>Video chunk use case</td></tr>
+          <tr><td>XLarge</td><td class="num">256 MB</td><td>Large blob (LIST only)</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="card">
+      <h3>Content Source Types</h3>
+      <table class="cmp-table">
+        <tbody>
+          <tr><td><strong>Path (ofPath)</strong></td><td>Zero-copy file transfer via OS sendfile(). Avoids copying data through JVM heap. Lower GC pressure.</td></tr>
+          <tr><td><strong>InputStream</strong></td><td>Traditional blocking I/O — reads into byte[] buffers in JVM heap, then writes to network. Higher GC pressure.</td></tr>
+        </tbody>
+      </table>
+      <p style="font-size:12px;color:var(--text-dim);margin-top:10px">Both content source types are tested for each system to isolate I/O path overhead from storage backend performance.</p>
+    </div>
+    <div class="card">
+      <h3>SDK Client Settings</h3>
+      <table class="cmp-table">
+        <tbody>
+          <tr><td>Connection pool max</td><td class="num">200</td></tr>
+          <tr><td>Connection pool minIdle</td><td class="num">10</td></tr>
+          <tr><td>Max wait for borrow</td><td class="num">30 seconds</td></tr>
+          <tr><td>Streaming chunk size</td><td class="num">4 MB</td></tr>
+          <tr><td>Checksum algorithm</td><td class="num">SHA-256</td></tr>
+          <tr><td>Multipart threshold</td><td class="num">8 MB</td></tr>
+          <tr><td>Multipart part size</td><td class="num">8 MB</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Scenario Execution Order -->
+  <div class="section-title">Scenario Execution Order (59 Scenarios)</div>
+  <div class="card">
+    <p style="font-size:13px;color:var(--text-dim);margin-bottom:12px">LIST runs first to avoid scanning 60K+ accumulated objects from PUT scenarios. LIST uses pre-seeded objects under a dedicated prefix.</p>
+    <table class="cmp-table">
+      <thead><tr><th>#</th><th>Scenario</th><th>Operation</th><th>File Size</th><th>Concurrency</th><th>Duration</th></tr></thead>
+      <tbody>
+        <tr><td>1-15</td><td>list-objects-{tiny,small,medium,large,xlarge}</td><td>LIST</td><td>All 5 tiers</td><td>c1, c4, c16</td><td>5m each</td></tr>
+        <tr><td>16-19</td><td>put-small</td><td>PUT</td><td>3 MB</td><td>c1, c4, c16, c64</td><td>5m each</td></tr>
+        <tr><td>20-22</td><td>put-medium</td><td>PUT</td><td>10 MB</td><td>c1, c4, c16</td><td>5m each</td></tr>
+        <tr><td>23-25</td><td>put-large</td><td>PUT</td><td>64 MB</td><td>c1, c4, c16</td><td>5m each</td></tr>
+        <tr><td>26-29</td><td>get-small</td><td>GET</td><td>3 MB</td><td>c1, c4, c16, c64</td><td>5m each</td></tr>
+        <tr><td>30-32</td><td>get-medium</td><td>GET</td><td>10 MB</td><td>c1, c4, c16</td><td>5m each</td></tr>
+        <tr><td>33-35</td><td>get-large</td><td>GET</td><td>64 MB</td><td>c1, c4, c16</td><td>5m each</td></tr>
+        <tr><td>36-39</td><td>head-small</td><td>HEAD</td><td>3 MB</td><td>c1, c4, c16, c64</td><td>5m each</td></tr>
+        <tr><td>40-42</td><td>delete-small</td><td>DELETE</td><td>3 MB</td><td>c1, c4, c16</td><td>5m each</td></tr>
+        <tr><td>43-46</td><td>mixed workloads</td><td>PUT+GET+HEAD</td><td>3 MB</td><td>c16, c64</td><td>5m each</td></tr>
+        <tr><td>47</td><td>burst</td><td>PUT</td><td>3 MB</td><td>c64</td><td>30s</td></tr>
+        <tr><td>48-50</td><td>read-after-write</td><td>PUT→GET</td><td>3 MB</td><td>c1, c4, c16</td><td>5m each</td></tr>
+        <tr><td>51-52</td><td>overwrite-storm</td><td>PUT (same key)</td><td>3 MB</td><td>c16, c64</td><td>5m each</td></tr>
+        <tr><td>53-56</td><td>cold-read</td><td>GET (uncached)</td><td>3MB, 10MB</td><td>c1, c4</td><td>5m each</td></tr>
+        <tr><td>57-58</td><td>size-sweep</td><td>PUT+GET (varied)</td><td>Mixed</td><td>c4</td><td>5m each</td></tr>
+        <tr><td>59</td><td>soak-test</td><td>PUT+GET+HEAD</td><td>3 MB</td><td>c16</td><td>1 hour</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+</div>
+
+<!-- ─── 2 GB/s FEASIBILITY TAB ─────────────────────────────────────────── -->
+<div class="tab-panel" id="panel-capacity">
+  <div class="section-title">Can We Achieve 2 GB/s Read &amp; Write Throughput?</div>
+
+  <div class="card" style="margin-bottom:20px;border-left:3px solid var(--accent)">
+    <h3 style="color:var(--accent)">Methodology</h3>
+    <p style="font-size:13px;margin:6px 0">This analysis extrapolates from <strong>measured benchmark results on 1 Gbps links</strong> to enterprise-grade hardware. The benchmark saturated the network at 112 MB/s (89.4% of 125 MB/s theoretical), giving us a measured network efficiency factor. All projections use this measured efficiency and clearly mark assumptions.</p>
+    <p style="font-size:12px;color:var(--red);margin-top:6px"><strong>⚠ Caveat:</strong> Linear scaling from 1 Gbps → 100 GbE is an <strong>assumption, not a measured result</strong>. Real-world behavior at 100 GbE may differ due to TCP congestion control, CPU interrupt overhead, memory bandwidth limits, and other factors not observable at 1 Gbps.</p>
+  </div>
+
+  <!-- Actual vs Enterprise Hardware -->
+  <div class="section-title" style="font-size:16px">Hardware: Measured (Benchmark) vs Enterprise (Projected)</div>
+  <div style="overflow-x:auto">
+    <table class="cmp-table" style="font-size:12.5px">
+      <thead><tr><th>Component</th><th>Benchmark Machine (Measured)</th><th>Enterprise Target (Assumed)</th><th>Scale Factor</th></tr></thead>
+      <tbody>
+        <tr><td><strong>Network</strong></td><td>1 GbE (eth0), 112 MB/s measured</td><td>100 GbE (Mellanox ConnectX-6), 11,176 MB/s projected</td><td class="num">100×</td></tr>
+        <tr><td><strong>Disk write</strong></td><td>398 MB/s sequential (SATA SSD, single disk per node)</td><td>8× NVMe @ 3,500 MB/s = 28,000 MB/s per node</td><td class="num">70×</td></tr>
+        <tr><td><strong>Disk read</strong></td><td>~500 MB/s actual (SATA SSD) <span class="tag tag-amber">⚠</span> reported 7,093 was page cache</td><td>8× NVMe @ 6,500 MB/s = 52,000 MB/s per node</td><td class="num">104×</td></tr>
+        <tr><td><strong>CPU</strong></td><td>i7-11850H, 16 cores @ 2.5 GHz</td><td>Xeon 4th Gen, 32 cores @ 2.1+ GHz</td><td class="num">~2×</td></tr>
+        <tr><td><strong>RAM</strong></td><td>15.3 GB total, 3.8 GB JVM heap</td><td>256 GB DDR5, 32 GB JVM heap</td><td class="num">16×</td></tr>
+        <tr><td><strong>JVM Direct Buffers</strong></td><td>828 MB peak (at 112 MB/s)</td><td>~15 GB projected (at 2,048 MB/s)</td><td class="num">18×</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- Measured Resource Usage -->
+  <div class="section-title" style="font-size:16px">Measured Resource Usage at 112 MB/s (Benchmark Ceiling)</div>
+
+  <div class="card" style="border-left:3px solid var(--red);margin-bottom:14px">
+    <h3 style="color:var(--red)">⚠ Important: These Are CLIENT-SIDE Metrics Only</h3>
+    <p style="font-size:13px;margin:6px 0">All CPU, heap, GC, and disk measurements in the CSV are from the <strong>test client JVM</strong> (the SDK benchmark runner), <strong>NOT from the storage servers</strong> (Ozone OM/SCM/DN or RustFs nodes). Server-side CPU, memory, and disk utilization were <strong>not captured</strong> in this benchmark.</p>
+    <p style="font-size:12px;color:var(--text-dim);margin-top:6px">This means we cannot directly project server-side resource requirements for 2 GB/s. We can only project client-side SDK overhead and infer server behavior from architectural analysis.</p>
+  </div>
+
+  <div class="card" style="border-left:3px solid var(--accent);margin-bottom:20px">
+    <p style="font-size:12px;color:var(--text-dim);margin-bottom:10px"><strong>Client JVM measurements</strong> at network-saturated throughput (~112 MB/s). Peak system CPU (96.4%) includes all processes on the test machine (client + possibly Docker containers for storage services).</p>
+    <table class="cmp-table" style="font-size:12.5px">
+      <thead><tr><th>Resource</th><th>Operation</th><th>RustFs Client</th><th>Ozone Client</th><th>Notes</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><strong>Client CPU — PUT</strong></td>
+          <td>PUT small c16</td>
+          <td class="num">2.19%</td>
+          <td class="num">1.77%</td>
+          <td>Similar — both just send HTTP PUTs</td>
+        </tr>
+        <tr>
+          <td><strong>Client CPU — GET</strong></td>
+          <td>GET small c64</td>
+          <td class="num">5.06%</td>
+          <td class="num">23.57%</td>
+          <td>Ozone 4.7× higher — S3G response parsing + object deserialization</td>
+        </tr>
+        <tr>
+          <td><strong>Client CPU — LIST</strong></td>
+          <td>LIST tiny c16</td>
+          <td class="num">0.51%</td>
+          <td class="num">34.89%</td>
+          <td>Ozone 68× higher — parsing 1,000 XML objects per response at 245 ops/s</td>
+        </tr>
+        <tr>
+          <td><strong>Peak System CPU</strong></td>
+          <td>All scenarios</td>
+          <td class="num" colspan="2">96.4% (entire machine: client + storage services)</td>
+          <td>Cannot separate client vs server</td>
+        </tr>
+        <tr>
+          <td><strong>Client Heap</strong></td>
+          <td>Peak across all</td>
+          <td class="num">1,916 MB</td>
+          <td class="num">2,045 MB</td>
+          <td>Similar — both fit in 4 GB JVM heap</td>
+        </tr>
+        <tr>
+          <td><strong>Direct Buffers</strong></td>
+          <td>Peak</td>
+          <td class="num">—</td>
+          <td class="num">828 MB</td>
+          <td>Ozone uses NIO direct buffers for EC streaming</td>
+        </tr>
+        <tr>
+          <td><strong>Client GC</strong></td>
+          <td>Overall</td>
+          <td class="num">0.08%</td>
+          <td class="num">3.76%</td>
+          <td>Ozone client allocates more objects (S3 XML parsing, EC chunk management)</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="card" style="border-left:3px solid var(--amber);margin-bottom:20px">
+    <h3 style="color:var(--amber)">Server-Side Resource Usage — What We Know vs Don't Know</h3>
+    <table class="cmp-table" style="font-size:12.5px">
+      <thead><tr><th>Server Component</th><th>RustFs</th><th>Ozone</th><th>Measured?</th></tr></thead>
+      <tbody>
+        <tr><td>EC encode/decode CPU</td><td>ISA-L (native, SIMD-optimized)</td><td>Java Reed-Solomon (or ISA-L via JNI)</td><td class="fail">Not measured</td></tr>
+        <tr><td>Metadata CPU</td><td>None (hash computation only)</td><td>OM: Raft consensus + RocksDB reads/writes</td><td class="fail">Not measured</td></tr>
+        <tr><td>Network stack CPU</td><td>Go net/http (single binary)</td><td>Netty (S3G) + gRPC (OM) + Ratis (DN)</td><td class="fail">Not measured</td></tr>
+        <tr><td>Disk I/O pattern</td><td>O_DIRECT sequential + xl.meta random</td><td>RocksDB WAL sequential + EC chunk sequential</td><td class="fail">Not measured</td></tr>
+        <tr><td>Memory usage</td><td>Minimal (Go, no GC pressure)</td><td>Multiple JVMs: S3G + OM + DN (each with GC)</td><td class="fail">Not measured</td></tr>
+        <tr><td>Number of processes</td><td>1 binary per node</td><td>3-4 JVMs per node (S3G + OM + SCM + DN)</td><td>Known from architecture</td></tr>
+      </tbody>
+    </table>
+    <p style="font-size:12px;color:var(--text-dim);margin-top:8px"><strong>Architectural inference:</strong> Ozone runs 3-4 separate JVM processes per node (S3G, OM, SCM, DN), each with its own heap, GC, and thread pool. RustFs runs a single Go binary. This structural difference means Ozone's aggregate server-side resource usage is almost certainly higher, but by how much is <strong>unknown without server-side monitoring</strong>.</p>
+  </div>
+
+  <!-- Per-Component Bottleneck Analysis -->
+  <div class="section-title" style="font-size:16px">Per-Component Bottleneck Analysis</div>
+
+  <div class="arch-compare">
+    <div class="arch-card">
+      <h4><span class="dot dot-rustfs"></span> RustFs — Write Path Bottleneck Stack</h4>
+      <pre>
+Target: 2,048 MB/s client write throughput
+
+Component         Capacity       Status
+─────────────────────────────────────────
+100 GbE NIC       11,176 MB/s    ✓ 5.5x headroom
+8× NVMe write     28,000 MB/s    raw
+  ÷ EC 4+4 (2x)  14,000 MB/s    ✓ 6.8x headroom
+Server CPU        NOT MEASURED   ? unknown
+Client CPU        2.2% @ 112MB/s ✓ trivial
+Coordinator       ∞ (none)       ✓ no bottleneck
+
+Known bottleneck: Network (at 11,176 MB/s)
+Unknown: Server-side EC encode CPU
+
+Nodes for 2 GB/s: 2,048 / 11,176 = 0.2
+  → 1 node sufficient for bandwidth
+
+BUT: EC 4+4 requires minimum distribution:
+  → 8 drives across multiple nodes for
+     fault tolerance (survive node failure)
+  → Minimum: 3-4 nodes for erasure spread
+
+Architectural advantage: single Go binary,
+  no JVM, ISA-L SIMD for EC → expected to
+  be CPU-efficient, but NOT MEASURED.</pre>
+    </div>
+    <div class="arch-card">
+      <h4><span class="dot dot-ozone"></span> Ozone — Write Path Bottleneck Stack</h4>
+      <pre>
+Target: 2,048 MB/s client write throughput
+
+Component         Capacity       Status
+─────────────────────────────────────────
+100 GbE NIC       11,176 MB/s    ✓ 5.5x headroom
+8× NVMe write     28,000 MB/s    raw
+  ÷ EC 6+3 (1.5x) 18,667 MB/s   ✓ 9.1x headroom
+Server CPU        NOT MEASURED   ? unknown
+Client CPU        1.8% @ 112MB/s ✓ trivial
+OM (RocksDB)      varies         ⚠ object-size dep.
+OM Raft (prod HA) varies         ⚠ adds overhead
+
+Known bottleneck: Network (at 11,176 MB/s)
+  + OM for small objects (even without Raft)
+Unknown: Server-side CPU (3-4 JVMs per node)
+
+Our test (single OM, no Raft):
+  → Raft overhead = 0 (not applicable)
+  → OM bottleneck = RocksDB + double-buffer only
+
+Production OM HA (3 OMs + Raft):
+  → EC 6+3: 9 datanodes for distribution
+  → 3 OM nodes + 1 SCM = 4 extra nodes
+  → OM Raft: object-size dependent ceiling
+
+Architectural concern: S3G + OM + DN each
+  run as separate JVMs with independent GC.
+  Aggregate server CPU is NOT MEASURED.</pre>
+    </div>
+  </div>
+
+  <!-- OM Raft Bottleneck by Object Size -->
+  <div class="section-title" style="font-size:16px">Critical: OM Bottleneck by Object Size (Production with OM HA)</div>
+  <div class="card" style="border-left:3px solid var(--red)">
+    <p style="font-size:12px;padding:6px 10px;background:rgba(251,191,36,.1);border-radius:4px;margin-bottom:8px"><strong>Our test:</strong> Single OM, no Raft — so these Raft numbers don't apply to our results. This table projects what happens in <strong>production Ozone with OM HA enabled</strong> (3 or 5 OMs using Raft consensus).</p>
+    <p style="font-size:13px;margin-bottom:12px">In production, every Ozone write requires 2 Raft proposals (openKey + commitKey). At 2 GB/s, the ops/s varies dramatically with object size. Typical OM Raft throughput: <strong>20,000-50,000 proposals/s</strong> on enterprise hardware (estimate based on published Raft benchmarks; not measured).</p>
+    <table class="cmp-table">
+      <thead><tr><th>Object Size</th><th>ops/s for 2 GB/s</th><th>Raft proposals/s</th><th>Single OM</th><th>With OM Federation</th><th>RustFs (no coordinator)</th></tr></thead>
+      <tbody>
+        <tr><td>256 MB</td><td class="num">8</td><td class="num">16</td><td class="ok">✓ trivial</td><td class="num">not needed</td><td class="ok">✓ trivial</td></tr>
+        <tr><td>64 MB</td><td class="num">32</td><td class="num">64</td><td class="ok">✓ trivial</td><td class="num">not needed</td><td class="ok">✓ trivial</td></tr>
+        <tr><td>10 MB</td><td class="num">205</td><td class="num">410</td><td class="ok">✓ fine</td><td class="num">not needed</td><td class="ok">✓ fine</td></tr>
+        <tr><td>3 MB</td><td class="num">683</td><td class="num">1,366</td><td class="ok">✓ fine</td><td class="num">not needed</td><td class="ok">✓ fine</td></tr>
+        <tr><td>100 KB</td><td class="num">20,480</td><td class="num">40,960</td><td style="color:var(--amber)">⚠ at limit</td><td class="ok">✓ 2 sub-clusters</td><td class="ok">✓ no coordinator</td></tr>
+        <tr><td>10 KB</td><td class="num">204,800</td><td class="num">409,600</td><td class="fail">✗ saturated (8-20x over)</td><td style="color:var(--amber)">⚠ 8-20 sub-clusters</td><td class="ok">✓ no coordinator</td></tr>
+        <tr><td>1 KB</td><td class="num">2,048,000</td><td class="num">4,096,000</td><td class="fail">✗ impossible (80-200x over)</td><td class="fail">✗ 80-200 sub-clusters</td><td class="ok">✓ no coordinator</td></tr>
+      </tbody>
+    </table>
+    <p style="font-size:12px;color:var(--text-dim);margin-top:10px"><strong>Note:</strong> OM Raft throughput of 20-50K proposals/s is an estimate based on published Raft benchmarks, not measured in our test. Actual OM throughput depends on hardware, RocksDB compaction, WAL disk speed, and network latency between OM replicas.</p>
+  </div>
+
+  <!-- Read Path -->
+  <div class="section-title" style="font-size:16px">Read Path — 2 GB/s</div>
+  <div class="arch-compare">
+    <div class="arch-card">
+      <h4><span class="dot dot-rustfs"></span> RustFs Read (O_DIRECT)</h4>
+      <pre>
+Target: 2,048 MB/s client read throughput
+
+Component         Capacity       Status
+─────────────────────────────────────────
+100 GbE NIC       11,176 MB/s    ✓ 5.5x headroom
+8× NVMe read      52,000 MB/s    raw
+  × 50% data      26,000 MB/s    ✓ 12.7x headroom
+  (EC 4+4: read 4 of 8 shards)
+Client CPU        5.1% @ c64     ✓ trivial
+Server CPU        NOT MEASURED   ? unknown
+
+Known bottleneck: Network (at 11,176 MB/s)
+Nodes for 2 GB/s: 1 node for bandwidth
+
+Key: O_DIRECT bypasses page cache.
+  Test disk: SATA SSD ~500 MB/s actual read
+    (reported 7,093 MB/s was page cache!)
+  8× NVMe: 52,000 MB/s → 104× more read BW</pre>
+      <ul>
+        <li><span class="tag tag-green">NVMe helps O_DIRECT</span> The c64 plateau (1,197 ops/s) likely reflects SATA SSD IOPS limits (~500 MB/s). 8×NVMe at 52,000 MB/s provides ~104× more read bandwidth, significantly breaking the plateau.</li>
+        <li><span class="tag tag-green">Predictable</span> No cache warmup, no cold/warm distinction — same performance from first request</li>
+        <li><span class="tag tag-amber">Server CPU unknown</span> EC decode + BLAKE3 checksumming happens server-side — not measured in this benchmark</li>
+      </ul>
+    </div>
+    <div class="arch-card">
+      <h4><span class="dot dot-ozone"></span> Ozone Read (Page Cache)</h4>
+      <pre>
+Target: 2,048 MB/s client read throughput
+
+Warm reads (working set &lt; 240 GB RAM):
+  Component         Capacity       Status
+  ─────────────────────────────────────────
+  100 GbE NIC       11,176 MB/s    ✓
+  RAM (page cache)  50,000 MB/s    ✓
+  Client CPU        23.6% @ 5,915 GET ops/s
+    (measured at GET c64, response parsing)
+  Server CPU        NOT MEASURED    ⚠ unknown
+    (S3G + OM lookupKey + EC assembly)
+  OM lookupKey      varies         ⚠ OM is in path
+
+  Per-node: network is only confirmed limit
+  Server CPU may limit at 100 GbE — needs testing
+
+Cold reads (working set &gt; RAM):
+  8× NVMe read      52,000 MB/s    raw
+    × 67% data      34,667 MB/s    ✓
+  (EC 6+3: read 6 of 9 chunks)</pre>
+      <ul>
+        <li><span class="tag tag-green">Warm reads</span> If working set fits in 240 GB RAM, reads are from memory — network becomes the only measured limit</li>
+        <li><span class="tag tag-amber">Server CPU unknown</span> S3G HTTP processing + OM lookupKey + EC chunk assembly all happen server-side — CPU impact not measured</li>
+        <li><span class="tag tag-amber">Client CPU</span> 23.6% client CPU at GET c64 (5,915 ops/s) — response parsing is significant at high ops/s</li>
+        <li><span class="tag tag-red">OM still in path</span> Every GET requires OM lookupKey — same Raft-dependent scaling as writes for small objects</li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- Network Backbone -->
+  <div class="section-title" style="font-size:16px">Network Backbone Verification</div>
+  <div class="card">
+    <table class="cmp-table">
+      <thead><tr><th>Component</th><th>Requirement</th><th>200 Gbps Backbone</th><th>400 Gbps Backbone</th></tr></thead>
+      <tbody>
+        <tr><td>Client → Storage (2 GB/s)</td><td class="num">16.4 Gbps</td><td class="ok">✓ 8.2% utilized</td><td class="ok">✓ 4.1% utilized</td></tr>
+        <tr><td>Client NIC (25 GbE)</td><td class="num">16.4 Gbps</td><td class="fail">✗ insufficient (need 100 GbE)</td><td class="fail">✗ insufficient</td></tr>
+        <tr><td>Client NIC (100 GbE)</td><td class="num">16.4 Gbps</td><td class="ok">✓ 16.4% utilized</td><td class="ok">✓ 16.4% utilized</td></tr>
+        <tr><td>Inter-node EC traffic (RustFs 4+4)</td><td class="num">32.8 Gbps (2x amp)</td><td class="ok">✓ 16.4% utilized</td><td class="ok">✓ 8.2% utilized</td></tr>
+        <tr><td>Inter-node EC traffic (Ozone 6+3)</td><td class="num">24.6 Gbps (1.5x amp)</td><td class="ok">✓ 12.3% utilized</td><td class="ok">✓ 6.2% utilized</td></tr>
+      </tbody>
+    </table>
+    <p style="font-size:12px;color:var(--text-dim);margin-top:8px"><strong>Conclusion:</strong> 200 Gbps backbone is sufficient. Client requires 100 GbE NIC (25 GbE only provides 2.8 GB/s practical, marginally above target). Both EC schemes' inter-node traffic is well within backbone capacity.</p>
+  </div>
+
+  <!-- Final Summary -->
+  <div class="section-title" style="font-size:16px">Final Answer — Minimum Cluster for 2 GB/s</div>
+  <div class="arch-compare">
+    <div class="arch-card" style="border-left:3px solid var(--green)">
+      <h4><span class="dot dot-rustfs"></span> RustFs — 2 GB/s Cluster</h4>
+      <table class="cmp-table" style="font-size:13px">
+        <tbody>
+          <tr><td><strong>Storage nodes</strong></td><td class="num better">3-4 nodes</td></tr>
+          <tr><td>Why not 1?</td><td>EC 4+4 needs drives across nodes for fault tolerance</td></tr>
+          <tr><td>Infrastructure nodes</td><td class="num better">0 (peer-to-peer)</td></tr>
+          <tr><td><strong>Total nodes</strong></td><td class="num better"><strong>3-4</strong></td></tr>
+          <tr><td>Per-node hardware</td><td>100 GbE + 8× NVMe + 32-core Xeon + 256 GB RAM</td></tr>
+          <tr><td>Client NIC</td><td>1× 100 GbE</td></tr>
+          <tr><td>Backbone</td><td>200 Gbps sufficient</td></tr>
+          <tr><td>Object size constraint</td><td class="ok">None — no metadata bottleneck at any size</td></tr>
+          <tr><td>Success rate (extrapolated)</td><td class="ok">100% (measured at all loads)</td></tr>
+        </tbody>
+      </table>
+      <p style="font-size:12px;color:var(--text-dim);margin-top:10px"><strong>Confidence:</strong> HIGH for writes (measured 89.4% network efficiency, linear with bandwidth). MEDIUM for reads (O_DIRECT plateau was disk-bound on SATA; NVMe eliminates this, but not tested at 100 GbE).</p>
+    </div>
+    <div class="arch-card" style="border-left:3px solid var(--blue)">
+      <h4><span class="dot dot-ozone"></span> Ozone — 2 GB/s Cluster</h4>
+      <table class="cmp-table" style="font-size:13px">
+        <tbody>
+          <tr><td><strong>Datanodes</strong></td><td class="num">3-9 nodes</td></tr>
+          <tr><td>Why range?</td><td>3 minimum (tested), 9 ideal for EC 6+3 full spread</td></tr>
+          <tr><td>Infrastructure nodes</td><td class="num worse">3 OM (HA) + 1 SCM = 4 nodes (our test: 1 OM + 1 SCM)</td></tr>
+          <tr><td><strong>Total nodes (prod)</strong></td><td class="num"><strong>7-13</strong></td></tr>
+          <tr><td>Per-node hardware</td><td>100 GbE + 8× NVMe + 32-core Xeon + 256 GB RAM</td></tr>
+          <tr><td>Client NIC</td><td>1× 100 GbE</td></tr>
+          <tr><td>Backbone</td><td>200 Gbps sufficient</td></tr>
+          <tr><td>Object size constraint</td><td class="fail">≥3 MB (single OM); ≥100 KB with Federation</td></tr>
+          <tr><td>Success rate (extrapolated)</td><td style="color:var(--amber)">80-100% (measured: degrades under sustained load)</td></tr>
+        </tbody>
+      </table>
+      <p style="font-size:12px;color:var(--text-dim);margin-top:10px"><strong>Confidence:</strong> HIGH for reads (page cache + NVMe). MEDIUM for writes (OM Raft throughput at 100 GbE not tested). LOW for small objects (OM becomes bottleneck — extrapolated, not measured).</p>
+    </div>
+  </div>
+
+  <!-- Practical Considerations -->
+  <div class="section-title" style="font-size:16px">Practical Considerations &amp; Unknowns</div>
+  <div class="card" style="border-left:3px solid var(--amber)">
+    <h3 style="color:var(--amber)">What This Analysis Cannot Tell You</h3>
+    <table class="cmp-table" style="font-size:12.5px">
+      <thead><tr><th>Factor</th><th>Impact</th><th>Status</th></tr></thead>
+      <tbody>
+        <tr><td>TCP behavior at 100 Gbps</td><td>Window scaling, congestion control, interrupt coalescing may reduce efficiency below 89.4%</td><td class="fail">Not measured</td></tr>
+        <tr><td>CPU network stack overhead</td><td>Processing 12.5 GB/s of packets requires significant CPU — may compete with EC encode</td><td class="fail">Not measured</td></tr>
+        <tr><td>Multi-client contention</td><td>Multiple clients writing simultaneously create cross-node EC traffic that compounds backbone usage</td><td class="fail">Not measured (single client test)</td></tr>
+        <tr><td>Ozone OM at 100 GbE throughput</td><td>OM Raft WAL write speed, RocksDB compaction under sustained high-throughput writes</td><td class="fail">Not measured</td></tr>
+        <tr><td>RustFs at 100 GbE</td><td>Peer-to-peer protocol overhead, drive selection hashing, xlmeta writes at high throughput</td><td class="fail">Not measured</td></tr>
+        <tr><td>EC encode at sustained 10 GB/s</td><td>ISA-L benchmark numbers vs sustained production workload with GC, context switching</td><td class="fail">Not measured</td></tr>
+        <tr><td>Ozone 20% failure rate at 2 GB/s</td><td>Soak test showed 20% failures at 112 MB/s — unclear if this improves or worsens at 2 GB/s</td><td class="fail">Not measured</td></tr>
+        <tr><td>NVMe endurance under sustained writes</td><td>3,500 MB/s × 2x EC = 7 GB/s per node sustained — NVMe wear leveling and thermal throttling</td><td class="fail">Not measured</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="card" style="margin-top:14px;border-left:3px solid var(--green)">
+    <h3 style="color:var(--green)">Bottom Line</h3>
+    <p style="font-size:14px;margin:8px 0"><strong>2 GB/s is achievable in bandwidth — but server-side CPU is the unknown.</strong></p>
+    <p style="font-size:13px;margin:8px 0">The benchmark was <strong>network-bound at 1 Gbps</strong>. Both systems saturated the 125 MB/s link at 112 MB/s (89.4% efficiency). Network and disk have 5-70× headroom on enterprise hardware. The question is whether server-side CPU can keep up.</p>
+    <ul style="font-size:13px">
+      <li><strong>What we measured:</strong> Client-side SDK CPU is low for both systems (~2% for PUT). Network is the only confirmed bottleneck. Both achieve identical throughput at saturation (~112 MB/s).</li>
+      <li><strong>What we didn't measure:</strong> Server-side CPU (EC encoding, Raft consensus, RocksDB). This is the critical unknown for 2 GB/s projections.</li>
+      <li><strong>RustFs architectural advantage:</strong> Single Go binary per node, ISA-L SIMD for EC, no metadata coordination, no JVM GC. With 3-4 nodes for EC distribution and 100% measured reliability — architecturally simpler path to 2 GB/s.</li>
+      <li><strong>Ozone architectural concern:</strong> 3-4 separate JVMs per node (S3G + OM + SCM + DN), Raft consensus on every write, RocksDB compaction. Requires 7-13 nodes (including infrastructure). OM becomes a bottleneck for small objects (&lt;100 KB at 2 GB/s = 20K+ ops/s).</li>
+      <li><strong>Reliability at scale:</strong> RustFs showed 100% success at all measured loads. Ozone showed 80% at sustained c16 on 1 Gbps. Whether this gap persists at 2 GB/s is <strong>unknown</strong>.</li>
+    </ul>
+    <p style="font-size:12px;color:var(--text-dim);margin-top:10px"><strong>To validate:</strong> A benchmark on enterprise hardware (100 GbE + NVMe) with <strong>server-side monitoring</strong> (CPU, memory, disk per node) is needed. The current results confirm bandwidth is not the limiting factor — but cannot confirm whether server-side resources are sufficient at 18× higher throughput.</p>
+  </div>
+</div>
+
+</div><!-- /content -->
+
+<script src="js/data.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>
