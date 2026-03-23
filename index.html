@@ -149,7 +149,7 @@
 
 <!-- ─── LIST TAB ──────────────────────────────────────────────────────────── -->
 <div class="tab-panel" id="panel-list">
-  <div class="section-title">LIST Operations — Ozone 20-60x Faster</div>
+  <div class="section-title">LIST Operations — SW &amp; Ozone 60-75x Faster Than RustFs</div>
   <div class="card" style="margin-bottom:20px;border-left:3px solid var(--amber)">
     <h3 style="color:var(--amber)">Test Setup: 1,000 Pre-Seeded Objects</h3>
     <p style="font-size:13px;margin:6px 0">LIST benchmarks run against <strong>1,000 zero-byte objects</strong> under prefix <code>perf-list-seed/obj-00000</code> → <code>obj-00999</code>. Each LIST call returns all 1,000 objects in a single page (<code>maxKeys=1000</code>). Object size tiers (tiny→xlarge) don't affect LIST — it's purely metadata.</p>
@@ -158,7 +158,7 @@
     • <strong>Prefix partitioning:</strong> Use hierarchical prefixes (e.g., <code>/photos/2024/01/</code> instead of flat <code>/photos/</code>) — RustFs only walks the subdirectory matching the prefix<br>
     • <strong>Multiple buckets:</strong> Split objects across buckets by tenant/category — each bucket is a separate directory tree, so listing one bucket doesn't scan others<br>
     • <strong>Metacache warmth:</strong> Repeated LISTs on the same prefix are served from RustFs's S2-compressed metacache — the first call is slow, subsequent calls are faster<br>
-    <span style="color:var(--text-dim)">For Ozone, these optimizations provide minimal benefit — RocksDB's sorted key seek is already O(log N) regardless of how objects are organized.</span></p>
+    <span style="color:var(--text-dim)">For Ozone and SeaweedFS, these optimizations provide minimal benefit — their LSM-tree sorted key seek is already O(log N) regardless of how objects are organized.</span></p>
   </div>
   <div class="grid grid-2">
     <div class="card"><h3>LIST ops/s by Concurrency (tiny objects)</h3><div class="chart-wrap"><canvas id="chartListTiny"></canvas></div></div>
@@ -166,7 +166,7 @@
   </div>
 
   <div class="arch-section">
-    <h2>Why the 20-60x Gap?</h2>
+    <h2>Why the 60-75x Gap? Three Architectures, Three LIST Strategies</h2>
     <div class="arch-compare">
       <div class="arch-card">
         <h4><span class="dot dot-rustfs"></span> RustFs (MinIO-style)</h4>
@@ -199,7 +199,39 @@
           <li><span class="tag tag-green">Single node</span> OM has the complete index — no fan-out needed</li>
         </ul>
       </div>
+      <div class="arch-card">
+        <h4><span class="dot dot-sw"></span> SeaweedFS</h4>
+        <pre>LIST request → S3 Gateway → Filer
+  → LevelDB iterator.seek(parent_dir + prefix)
+  → sequential forward scan (sorted keys)
+  → stop at maxKeys or prefix mismatch
+  → return page (no volume server access)</pre>
+        <ul>
+          <li><span class="tag tag-green">O(log N + K)</span> Same LSM-tree seek as Ozone — keys sorted by (parent_dir, filename)</li>
+          <li><span class="tag tag-green">LevelDB</span> Embedded LSM tree — same family as RocksDB but lighter/simpler</li>
+          <li><span class="tag tag-green">No volume access</span> LIST is purely a Filer metadata operation — volume servers never touched</li>
+          <li><span class="tag tag-green">Direct local read</span> Filer reads its own LevelDB — no RPC to another process (unlike Ozone S3G→OM)</li>
+          <li><span class="tag tag-green">Single process</span> S3 gateway + Filer in same process (weed filer -s3) — zero network hop for metadata</li>
+        </ul>
+      </div>
     </div>
+  </div>
+
+  <!-- Why SW slightly beats Ozone -->
+  <div class="card" style="margin-bottom:20px;border-left:3px solid var(--sw)">
+    <h3 style="color:var(--sw)">Why SeaweedFS Slightly Outperforms Ozone on LIST (Both Use LSM Trees)</h3>
+    <p style="font-size:13px;margin:8px 0">Both Ozone and SeaweedFS use embedded LSM-tree databases for metadata (RocksDB vs LevelDB). So why does SeaweedFS win by 1.0-1.4x on LIST?</p>
+    <table class="cmp-table" style="margin-top:10px">
+      <thead><tr><th>Factor</th><th>Ozone (RocksDB)</th><th>SeaweedFS (LevelDB)</th><th>Impact on LIST</th></tr></thead>
+      <tbody>
+        <tr><td><strong>Request path hops</strong></td><td>Client → S3G (HTTP) → OM (Ratis RPC) → RocksDB</td><td>Client → weed s3/Filer (same process) → LevelDB</td><td>Ozone has 2 network hops (S3G→OM is RPC); SW has 0 (in-process)</td></tr>
+        <tr><td><strong>Per-request overhead</strong></td><td>S3G creates new OzoneClient per request (connection pool, auth, session)</td><td>Filer directly calls LevelDB — no per-request client creation</td><td>Ozone's per-request OzoneClient allocation adds latency + GC pressure</td></tr>
+        <tr><td><strong>DB complexity</strong></td><td>RocksDB: column families, bloom filters, compaction styles, compression codecs</td><td>LevelDB: simpler LSM with fewer features, less tuning overhead</td><td>LevelDB's simplicity means less CPU per seek for basic range scans</td></tr>
+        <tr><td><strong>Response serialization</strong></td><td>OM returns Protobuf → S3G converts to XML → client parses XML</td><td>Filer returns JSON/Protobuf directly — fewer conversions</td><td>Ozone's XML serialization (1,000 objects per response) is CPU-heavy</td></tr>
+        <tr><td><strong>Process model</strong></td><td>3 JVMs: S3G + OM + SCM (each with own GC)</td><td>1 Go binary: weed server (single GC, lower memory)</td><td>Lower total resource usage leaves more CPU/RAM for actual LIST work</td></tr>
+      </tbody>
+    </table>
+    <p style="font-size:12px;color:var(--text-dim);margin-top:10px"><strong>Bottom line:</strong> The LSM-tree seek is equally fast in both (O(log N + K)). The difference comes from <strong>everything around the DB call</strong> — Ozone's multi-JVM architecture (S3G→OM RPC, per-request OzoneClient, XML serialization) adds overhead that SeaweedFS avoids by keeping everything in a single Go process with direct LevelDB access. At 1,000 objects per LIST, this per-request overhead matters.</p>
   </div>
 
   <div class="section-title">Detailed Numbers</div>
