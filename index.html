@@ -701,7 +701,7 @@ Time 5:00+  KeyDeletingService → SCM → DNs delete chunks
 
 <!-- ─── CONSISTENCY TAB ───────────────────────────────────────────────────── -->
 <div class="tab-panel" id="panel-consistency">
-  <div class="section-title">Consistency — RustFs Strong, Ozone Eventual</div>
+  <div class="section-title">Consistency — RustFs 100% RAW, Ozone &amp; SeaweedFS 0% (Different Root Causes)</div>
   <div class="grid grid-3">
     <div class="card">
       <h3>Read-After-Write</h3>
@@ -773,7 +773,52 @@ GET → S3G → same single OM:
           <li><span class="tag tag-red">Overwrite: optimistic lock</span> expectedGeneration rejects concurrent writers</li>
         </ul>
       </div>
+      <div class="arch-card">
+        <h4><span class="dot dot-sw"></span> SeaweedFS — 0% RAW, 100% Overwrite (Different Root Cause)</h4>
+        <pre>PUT → S3 Gateway → Filer:
+  Step 1: Upload data TO Volume Server
+    → needle appended to .dat file
+    → all replicas ACK → data is durable ✓
+
+  Step 2: Write metadata TO Filer Store (LevelDB)
+    → (parent_dir, filename) → chunk locations
+    → this is a SEPARATE operation from Step 1
+
+  ──── GAP: read arrives here → 404 ────
+
+  Step 3: Return 200 OK to client
+
+GET → S3 Gateway → Filer:
+  → LevelDB lookup(parent_dir, filename)
+  → IF Step 2 not yet committed: 404 Not Found
+  → data exists on Volume Server but Filer
+    doesn't know about it yet</pre>
+        <ul>
+          <li><span class="tag tag-red">Non-atomic 2-step write</span> Data goes to Volume Server first, then metadata to Filer — these are two separate operations, not a single transaction</li>
+          <li><span class="tag tag-red">Window of invisibility</span> Between data-commit and metadata-commit, the object exists on disk but cannot be found via Filer/S3 — a GET during this window returns 404</li>
+          <li><span class="tag tag-red">0% RAW measured</span> The gap is consistent enough that our benchmark found 0% read-after-write success across c1-c16</li>
+          <li><span class="tag tag-green">Overwrite: 100%</span> Overwrites append a NEW needle (old one becomes garbage). No locking, no conflict — every writer succeeds because they're writing to different disk offsets. Filer metadata update is a simple key replace.</li>
+          <li><span class="tag tag-amber">Multi-filer risk</span> With multiple Filers using embedded LevelDB, metadata sync via event broadcast can lose events under load (GitHub #6186) — making RAW even worse in multi-filer deployments</li>
+        </ul>
+      </div>
     </div>
+  </div>
+
+  <!-- SeaweedFS vs Ozone: Same 0% RAW, Different Reasons -->
+  <div class="card" style="margin-top:20px;border-left:3px solid var(--red)">
+    <h3 style="color:var(--red)">Both 0% RAW — But Completely Different Root Causes</h3>
+    <p style="font-size:13px;margin:8px 0">Ozone and SeaweedFS both show 0% read-after-write consistency, but the architectural reasons are entirely different:</p>
+    <table class="cmp-table" style="margin-top:10px">
+      <thead><tr><th>Factor</th><th>Ozone (0% RAW)</th><th>SeaweedFS (0% RAW)</th></tr></thead>
+      <tbody>
+        <tr><td><strong>Root cause</strong></td><td>OM DoubleBuffer async flush + Ratis applyTransaction lag — metadata written to WAL but not yet visible in table cache/RocksDB</td><td>Non-atomic 2-step write — data committed to Volume Server, but Filer metadata not yet committed to LevelDB</td></tr>
+        <tr><td><strong>Where data lives during gap</strong></td><td>Data is on DataNodes (EC chunks), key is in WAL but not in table cache</td><td>Data is on Volume Server (needle written), but Filer has no entry for it yet</td></tr>
+        <tr><td><strong>Why GET fails</strong></td><td>OM lookupKey reads table cache + RocksDB — neither has the key yet</td><td>Filer LevelDB lookup returns nothing — metadata write hasn't happened yet</td></tr>
+        <tr><td><strong>Can it be fixed?</strong></td><td>HDDS-14509 adds <code>LEADER_ONLY</code> / <code>LINEARIZABLE</code> read consistency levels (Ozone 2.2.0+, not enabled in our test)</td><td>Run S3 gateway inside Filer process (<code>weed filer -s3</code>) + use shared metadata store (MySQL/etcd) for multi-filer. Still non-atomic unless Filer adds write-ahead logging.</td></tr>
+        <tr><td><strong>Overwrite behavior</strong></td><td class="fail">0% — optimistic locking (updateID) rejects concurrent writers</td><td class="ok">100% — append new needle, no conflict possible. Old needle becomes garbage.</td></tr>
+      </tbody>
+    </table>
+    <p style="font-size:12px;color:var(--text-dim);margin-top:10px"><strong>Key insight:</strong> Ozone's 0% RAW is a <strong>metadata visibility problem</strong> (data exists, index hasn't caught up). SeaweedFS's 0% RAW is a <strong>non-atomic write problem</strong> (data committed, metadata not yet committed as a separate step). Both could theoretically be fixed — Ozone with linearizable reads, SeaweedFS with a write-ahead log that makes data+metadata atomic — but neither was configured for consistency in our test.</p>
   </div>
 
   <!-- Deep Dive: The REAL root cause -->
