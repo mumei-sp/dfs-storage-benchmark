@@ -2000,7 +2000,7 @@ Gap: Nearly equal — RustFs wins on predictability</pre>
         </div>
       </div>
       <div class="card" style="margin-top:12px;border-left:3px solid var(--red)">
-        <p style="font-size:12.5px"><strong>Key finding:</strong> RustFs 100% success. Ozone 0% success — even with a <strong>single OM</strong> (no multi-OM routing). Recently written keys are not visible for an indeterminate period, likely due to Ratis async apply or S3G connection pooling (root cause not definitively identified — see Consistency tab for full analysis). <strong>Any application that writes then reads must implement retry logic or client-side caching with Ozone's default S3G configuration.</strong></p>
+        <p style="font-size:12.5px"><strong>Key finding:</strong> RustFs 100% success. <strong>Ozone 0% and SeaweedFS 0%</strong> — but for completely different reasons. Ozone: OM DoubleBuffer async flush + Ratis applyTransaction lag means metadata is in WAL but not yet visible in table cache/RocksDB. SeaweedFS: non-atomic 2-step write — data committed to Volume Server, then metadata written to Filer LevelDB as a separate operation. A GET arriving between these two steps returns 404 (data exists on disk but Filer doesn't know about it). See Consistency tab for full root-cause comparison. <strong>Any application that writes then reads must implement retry logic or client-side caching with both Ozone and SeaweedFS.</strong></p>
       </div>
     </div>
   </details>
@@ -2029,7 +2029,7 @@ Gap: Nearly equal — RustFs wins on predictability</pre>
         </div>
       </div>
       <div class="card" style="margin-top:12px;border-left:3px solid var(--red)">
-        <p style="font-size:12.5px"><strong>Key finding:</strong> RustFs ~93% success at c16, ~70% at c64. Ozone ~0% at both. Ozone uses optimistic locking (expectedGeneration) which rejects all concurrent writers. <strong>Applications using Ozone must implement application-level locking or CAS retry loops for shared mutable objects.</strong></p>
+        <p style="font-size:12.5px"><strong>Key finding:</strong> <strong>SeaweedFS 100%</strong> at c16 and c64 — overwrites append a new needle to the volume file (old needle becomes garbage), so no conflict is possible. RustFs ~93% at c16, ~70% at c64 — atomic xl.meta replace handles most concurrent writes but some fail under heavy contention. <strong>Ozone ~0%</strong> at both — optimistic locking (expectedGeneration/updateID) rejects all concurrent writers. Applications using Ozone must implement application-level locking or CAS retry loops for shared mutable objects.</p>
       </div>
     </div>
   </details>
@@ -2058,7 +2058,7 @@ Gap: Nearly equal — RustFs wins on predictability</pre>
         </div>
       </div>
       <div class="card" style="margin-top:12px;border-left:3px solid var(--amber)">
-        <p style="font-size:12.5px"><strong>Key finding:</strong> Both systems perform similarly on mixed workloads (~185 ops/s read-heavy, ~53 ops/s write-heavy). The bottleneck becomes the PUT path for write-heavy mixes, which limits both systems equally. The Ozone InputStream variant drops to 42 ops/s at write-heavy c64 — 20% slower than ofPath.</p>
+        <p style="font-size:12.5px"><strong>Key finding:</strong> All three systems converge on mixed workloads because the PUT component becomes the bottleneck. Read-heavy c16: RustFs ~185, Ozone ~185, SW ~160 ops/s. Write-heavy c16: all ~53 ops/s (network-bound PUTs). <strong>SeaweedFS InputStream collapses on mixed too</strong> — the Filer proxy bottleneck affects GETs within the mixed workload just like isolated GETs. The real differentiator in mixed workloads is <strong>success rate</strong>: RustFs and SW Path maintain 100%, Ozone drops under large file mixed loads.</p>
       </div>
     </div>
   </details>
@@ -2087,7 +2087,7 @@ Gap: Nearly equal — RustFs wins on predictability</pre>
         </div>
       </div>
       <div class="card" style="margin-top:12px;border-left:3px solid var(--red)">
-        <p style="font-size:12.5px"><strong>Key finding:</strong> RustFs: 37 ops/s, 1,152 ops completed. Ozone ofPath: 7 ops/s, 353 ops. Ozone InputStream: <strong>0 ops/s — complete failure</strong>. Ozone's OM Raft group + SCM block allocation cannot ramp up fast enough for burst traffic. RustFs's peer-to-peer design handles burst gracefully because there is no central coordinator to overwhelm.</p>
+        <p style="font-size:12.5px"><strong>Key finding:</strong> RustFs: 37 ops/s, 1,152 ops. <strong>SeaweedFS: 36 ops/s, 1,104 ops</strong> — nearly identical to RustFs. Ozone Path: 7 ops/s, 353 ops. Ozone IS: <strong>0 ops/s — complete failure</strong>. Both RustFs and SeaweedFS handle burst gracefully — RustFs via peer-to-peer hash-based design (no coordinator), SeaweedFS via lightweight Master (volume assignment only, not per-object coordination). Ozone's OM Raft group + SCM block allocation cannot ramp up fast enough for burst traffic.</p>
       </div>
     </div>
   </details>
@@ -2117,7 +2117,7 @@ Gap: Nearly equal — RustFs wins on predictability</pre>
         </div>
       </div>
       <div class="card" style="margin-top:12px;border-left:3px solid var(--amber)">
-        <p style="font-size:12.5px"><strong>Key finding:</strong> RustFs: 186 ops/s, <strong>100% success rate</strong>, 671K successful ops. Ozone: 1,226 ops/s, <strong>80% success rate</strong>, 3.53M successful ops (5.3x more than RustFs). Ozone loses 1 in 5 operations but still completes far more work. <strong>Important:</strong> Benchmarks run with maxAttempts=1 (no retries). The impact of retry logic on Ozone's success rate was <strong>not tested</strong>. Measured result: <strong>RustFs = zero failures at any load; Ozone = 20% failure rate sustained over 1 hour at c16</strong>.</p>
+        <p style="font-size:12.5px"><strong>Key finding:</strong> RustFs: 186 ops/s, <strong>100% success</strong>, 671K ops. <strong>SeaweedFS Path: 160 ops/s, 100% success</strong>, 577K ops. SeaweedFS IS: 28 ops/s, <strong>95.8% success</strong>, 100K ops (InputStream degradation carries into sustained load). Ozone Path: 1,226 ops/s, <strong>80% success</strong>, 4.4M ops (more total but 20% failures). Ozone IS: 991 ops/s, 80% success. <strong>Important:</strong> Benchmarks run with maxAttempts=1 (no retries). RustFs and SW Path = zero failures over 1 hour; Ozone = 20% failure rate sustained; SW IS = 4.2% failure rate.</p>
       </div>
     </div>
   </details>
@@ -2146,7 +2146,7 @@ Gap: Nearly equal — RustFs wins on predictability</pre>
         </div>
       </div>
       <div class="card" style="margin-top:12px;border-left:3px solid var(--amber)">
-        <p style="font-size:12.5px"><strong>Key finding:</strong> Very low throughput for both systems (~0.2 ops/s at c1). <strong>Note:</strong> RustFs Path shows ~44% success while RustFs InputStream shows 100% on the same scenario — this is a <strong>test setup artifact</strong> (Path content-source failed to locate pre-seeded objects; zero-latency failures confirm 404s, not timeouts). Ozone cold-read results are similarly unreliable. Cold reads are inherently slow — the key takeaway is that <strong>warm cache (page cache) is what makes Ozone's GET fast</strong>; without it, both systems are disk-bound.</p>
+        <p style="font-size:12.5px"><strong>Key finding:</strong> Very low throughput for all systems (~0.2 ops/s at c1 for RustFs/Ozone, ~1.7 ops/s for SeaweedFS). SeaweedFS is faster on cold reads because its O(1) needle lookup (16-byte in-memory index) means even cold reads only need a single disk seek — no directory walk (RustFs) or RocksDB query (Ozone). <strong>Note:</strong> RustFs Path shows ~44% success while RustFs IS shows 100% on the same scenario — this is a <strong>test setup artifact</strong> (Path content-source failed to locate pre-seeded objects; zero-latency 404s, not timeouts). Key takeaway: <strong>warm page cache is what makes Ozone's and SW's GET fast</strong>; without it, all three are disk-bound, but SW's simpler read path gives it an edge even cold.</p>
       </div>
     </div>
   </details>
@@ -2278,7 +2278,7 @@ Gap: Nearly equal — RustFs wins on predictability</pre>
         <tr><td>Write coordination</td><td>None (hash-based)</td><td>2× OM Raft + EC stripe</td><td>Master assigns vol ID → direct write to volume server</td><td>PUT: All similar at c64 (network-bound). RustFs faster at c4.</td></tr>
         <tr><td>Read fan-out</td><td>4+ drives (EC:4+4, local)</td><td>6 chunks across 3 DNs (EC:6+3, network)</td><td>1 ReadAt() from 1 volume (replication, no EC decode)</td><td>GET c64: SW 20K > Ozone 5.9K > RustFs 1.2K</td></tr>
         <tr><td>Metadata I/O per HEAD</td><td>8 disk reads (quorum)</td><td>1 RocksDB get (in-memory)</td><td>1 LevelDB get (Filer only, no volume access)</td><td>HEAD c64: SW 24K > Ozone 10K > RustFs 1.6K</td></tr>
-        <tr><td>Page cache</td><td>Standard I/O (unverified if O_DIRECT)</td><td>OS page cache (standard Java I/O)</td><td>OS page cache (standard Go I/O)</td><td>SW &amp; Ozone benefit from hot data in RAM</td></tr>
+        <tr><td>Page cache</td><td>O_DIRECT — bypasses OS page cache, every read hits disk</td><td>OS page cache (standard Java I/O)</td><td>OS page cache (standard Go I/O)</td><td>SW &amp; Ozone benefit from hot data in RAM; RustFs trades peak throughput for predictable latency at scale</td></tr>
         <tr><td>Consistency model</td><td>Strong (quorum + fdatasync)</td><td>Eventual via S3G (OM double-buffer + per-request OzoneClient)</td><td>Strong for blobs (all replicas ACK), but non-atomic 2-step write (data→volume, then metadata→Filer) causes 0% RAW</td><td>RAW: RustFs 100%, Ozone 0%, SW 0%</td></tr>
         <tr><td>Overwrite handling</td><td>Atomic xl.meta replace</td><td>Optimistic locking (updateID)</td><td>Append new needle (old needle becomes garbage)</td><td>Overwrite storm: SW 100% > RustFs ~90% > Ozone ~0%</td></tr>
         <tr><td>Central coordinator</td><td>None (peer-to-peer)</td><td>OM + SCM (Raft HA)</td><td>Master (Raft leader election, volume assignment only)</td><td>SW Master is lightweight (MB-scale state for PB clusters)</td></tr>
