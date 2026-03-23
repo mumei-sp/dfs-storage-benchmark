@@ -1282,8 +1282,8 @@ RustFs soak:   186 total ops/s  →  186 SUCCESSFUL ops/s (0 failures)
           <tr><td>RustFs IS</td><td class="num better">1,150</td><td class="num better">37.23</td><td class="num">111.70</td></tr>
           <tr><td>Ozone Path</td><td class="num">353</td><td class="num">7.06</td><td class="num">21.18</td></tr>
           <tr><td>Ozone IS</td><td class="num fail">0</td><td class="num fail">0.00</td><td class="num">0.00</td></tr>
-          <tr><td style="color:var(--sw)">SeaweedFS Path</td><td class="num better">1,104</td><td class="num better">36.15</td><td class="num">108.45</td></tr>
-          <tr><td style="color:var(--sw)">SeaweedFS IS</td><td class="num better">1,141</td><td class="num better">37.03</td><td class="num">111.08</td></tr>
+          <tr><td>SeaweedFS Path</td><td class="num better">1,104</td><td class="num better">36.15</td><td class="num">108.45</td></tr>
+          <tr><td>SeaweedFS IS</td><td class="num better">1,141</td><td class="num better">37.03</td><td class="num">111.08</td></tr>
         </tbody>
       </table>
       <p style="font-size:12px;color:var(--text-dim);margin-top:12px">Ozone's OM Raft group (openKey/commitKey) + EC block allocation through SCM become bottlenecks in short burst windows. RustFs and SeaweedFS both handle bursts well — RustFs via peer-to-peer hash-based design, SeaweedFS via lightweight Master with simple volume assignment.</p>
@@ -1477,8 +1477,8 @@ RustFs over 1 hour:
           <tr><td>RustFs IS</td><td class="num better">1.69</td><td class="num">2.6s</td><td class="num">6.2s</td><td class="num better">100%</td></tr>
           <tr><td>Ozone Path</td><td class="num fail">0.03</td><td class="num fail">120s</td><td class="num fail">120s</td><td class="num fail">0%</td></tr>
           <tr><td>Ozone IS</td><td class="num fail">0.02</td><td class="num fail">120s</td><td class="num fail">120s</td><td class="num fail">0%</td></tr>
-          <tr><td style="color:var(--sw)">SW Path</td><td class="num better">1.68</td><td class="num">2.3s</td><td class="num">6.2s</td><td class="num better">100%</td></tr>
-          <tr><td style="color:var(--sw)">SW IS</td><td class="num better">1.68</td><td class="num">2.9s</td><td class="num">5.3s</td><td class="num better">100%</td></tr>
+          <tr><td>SW Path</td><td class="num better">1.68</td><td class="num">2.3s</td><td class="num">6.2s</td><td class="num better">100%</td></tr>
+          <tr><td>SW IS</td><td class="num better">1.68</td><td class="num">2.9s</td><td class="num">5.3s</td><td class="num better">100%</td></tr>
         </tbody>
       </table>
       <p style="font-size:12px;color:var(--text-dim);margin-top:10px">Every Ozone PUT hit the <strong>client-side 120s timeout</strong> (configured via <code>perAttemptTimeout: 120s</code>). The p50 of exactly 120,057ms confirms operations were killed by the timeout, not by Ozone rejecting them. Variable-size block allocation through OM/SCM may simply take longer than 120s — operations might complete given more time. This is a <strong>timeout-induced failure</strong>, not necessarily a hard system limit.</p>
@@ -1492,8 +1492,8 @@ RustFs over 1 hour:
           <tr><td>RustFs IS</td><td class="num">1.66</td><td class="num">368ms</td><td class="num">14.2s</td><td class="num better">100%</td></tr>
           <tr><td>Ozone Path</td><td class="num better">1,484</td><td class="num better">0.006ms</td><td class="num better">13ms</td><td class="num worse">25.2%</td></tr>
           <tr><td>Ozone IS</td><td class="num better">1,675</td><td class="num better">0.007ms</td><td class="num better">11ms</td><td class="num worse">25.0%</td></tr>
-          <tr><td style="color:var(--sw)">SW Path</td><td class="num">1.67</td><td class="num">358ms</td><td class="num">13.7s</td><td class="num better">100%</td></tr>
-          <tr><td style="color:var(--sw)">SW IS</td><td class="num">1.66</td><td class="num">378ms</td><td class="num">12.3s</td><td class="num better">100%</td></tr>
+          <tr><td>SW Path</td><td class="num">1.67</td><td class="num">358ms</td><td class="num">13.7s</td><td class="num better">100%</td></tr>
+          <tr><td>SW IS</td><td class="num">1.66</td><td class="num">378ms</td><td class="num">12.3s</td><td class="num better">100%</td></tr>
         </tbody>
       </table>
       <p style="font-size:12px;color:var(--text-dim);margin-top:10px">Ozone reads at 1,484-1,675 ops/s (900x faster than RustFs!) but only 25% success — the 75% failures correspond to the objects that failed to write in the PUT sweep (RETRY_EXHAUSTED errors). The successful GETs are sub-millisecond from RocksDB cache.</p>
@@ -1705,7 +1705,7 @@ RustFs over 1 hour:
           <tbody>
             <tr><td>RustFs</td><td class="num better">13.2</td><td class="num better">37.2</td><td class="num">37.2</td><td class="ok">100%</td><td>Hash → erasure encode (4+4) → quorum write to local drives → fdatasync</td></tr>
             <tr><td>Ozone</td><td class="num">11.1</td><td class="num">35.7</td><td class="num">37.3</td><td class="ok">100% (small) / <span style="color:var(--red)">67-93% (med/large)</span></td><td>S3G → OM openKey (Raft) → EC encode (6+3) → 3 DNs → OM commitKey</td></tr>
-            <tr><td style="color:var(--sw)">SeaweedFS</td><td class="num">10.1</td><td class="num">31.1</td><td class="num">37.3</td><td class="ok">100%</td><td>S3 GW → Filer → Volume Server (needle append) → Filer metadata (LevelDB)</td></tr>
+            <tr><td>SeaweedFS</td><td class="num">10.1</td><td class="num">31.1</td><td class="num">37.3</td><td class="ok">100%</td><td>S3 GW → Filer → Volume Server (needle append) → Filer metadata (LevelDB)</td></tr>
           </tbody>
         </table>
         <p style="font-size:12.5px;margin-top:10px"><strong>Why they all converge at c64 (~37 ops/s):</strong></p>
@@ -1753,7 +1753,7 @@ RustFs over 1 hour:
           <tbody>
             <tr><td>RustFs Path</td><td class="num">157</td><td class="num">686</td><td class="num">1,207</td><td class="num">1,197</td><td>Plateaus at c16 — O_DIRECT means every read hits physical disk (~500 MB/s SATA SSD). 16+ readers saturate the disk.</td></tr>
             <tr><td>Ozone Path</td><td class="num">93</td><td class="num">528</td><td class="num">2,193</td><td class="num better">5,915</td><td>Scales linearly to c64 — OS page cache serves hot data from RAM (7 GB/s). No disk bottleneck for repeated reads.</td></tr>
-            <tr><td style="color:var(--sw)">SW Path</td><td class="num better">217</td><td class="num better">1,320</td><td class="num better">5,746</td><td class="num better">20,203</td><td>Scales 3.4× past Ozone — Haystack O(1) needle lookup (16-byte in-memory index) + page cache + no EC decode overhead (replication, not EC).</td></tr>
+            <tr><td>SW Path</td><td class="num better">217</td><td class="num better">1,320</td><td class="num better">5,746</td><td class="num better">20,203</td><td>Scales 3.4× past Ozone — Haystack O(1) needle lookup (16-byte in-memory index) + page cache + no EC decode overhead (replication, not EC).</td></tr>
           </tbody>
         </table>
         <p style="font-size:12.5px;margin-top:10px"><strong>Why SeaweedFS dominates GET:</strong></p>
@@ -1887,7 +1887,7 @@ Gap: Nearly equal — RustFs wins on predictability</pre>
           <tbody>
             <tr><td>RustFs</td><td class="num">189</td><td class="num">858</td><td class="num">1,590</td><td class="num">1,585</td><td>Reads xl.meta from quorum of 8 drives (EC 4+4) — physical disk I/O per HEAD. Plateaus at c16 (same O_DIRECT saturation as GET).</td></tr>
             <tr><td>Ozone</td><td class="num">333</td><td class="num">1,599</td><td class="num">6,424</td><td class="num better">10,188</td><td>Single RocksDB point lookup via OM — key metadata in block cache (RAM). No disk I/O, no data transfer.</td></tr>
-            <tr><td style="color:var(--sw)">SeaweedFS</td><td class="num better">328</td><td class="num better">1,723</td><td class="num better">7,294</td><td class="num better">24,353</td><td>In-process LevelDB lookup — no RPC to external server. Filer resolves (dir, name) → metadata in its own embedded store. No volume server contact needed for HEAD.</td></tr>
+            <tr><td>SeaweedFS</td><td class="num better">328</td><td class="num better">1,723</td><td class="num better">7,294</td><td class="num better">24,353</td><td>In-process LevelDB lookup — no RPC to external server. Filer resolves (dir, name) → metadata in its own embedded store. No volume server contact needed for HEAD.</td></tr>
           </tbody>
         </table>
         <p style="font-size:12.5px;margin-top:10px"><strong>Why SeaweedFS is 2.4× faster than Ozone at c64:</strong></p>
@@ -1931,7 +1931,7 @@ Gap: Nearly equal — RustFs wins on predictability</pre>
           <tbody>
             <tr><td>RustFs</td><td>None — filesystem directories across 8 drives (EC 4+4)</td><td class="num">4.3 ops/s</td><td>O(N) — walks all directories, reads xl.meta per object, per-prefix deduplication</td></tr>
             <tr><td>Ozone</td><td>RocksDB (sorted LSM tree) in OM</td><td class="num better">245 ops/s</td><td>O(log N + K) — sorted key range scan, K=1000 objects returned. Hot keys in block cache.</td></tr>
-            <tr><td style="color:var(--sw)">SeaweedFS</td><td>LevelDB (sorted LSM tree) in Filer</td><td class="num better">320 ops/s</td><td>O(log N + K) — same family as RocksDB. In-process (no RPC). LIST never touches volume servers.</td></tr>
+            <tr><td>SeaweedFS</td><td>LevelDB (sorted LSM tree) in Filer</td><td class="num better">320 ops/s</td><td>O(log N + K) — same family as RocksDB. In-process (no RPC). LIST never touches volume servers.</td></tr>
           </tbody>
         </table>
         <p style="font-size:12.5px;margin-top:10px"><strong>Why SeaweedFS has a slight edge over Ozone (1.1-1.4×):</strong></p>
@@ -2503,14 +2503,14 @@ Heap: ▓▓▓▓▓▓▓▓░░▓▓▓▓▓▓▓▓░░ (sawtooth)
           <td><span class="tag tag-red">Critical</span> 235 ops/s lost over sustained load</td>
         </tr>
         <tr>
-          <td style="color:var(--sw)">SW (GET small c64)</td>
+          <td>SW (GET small c64)</td>
           <td class="num fail">-99.6% (20,203 → 80)</td>
           <td class="num worse">~0x (0.03% → 0.03%)</td>
           <td class="num">Similar</td>
           <td><span class="tag tag-red">Critical</span> InputStream unusable — Filer proxies all bytes; per-chunk volume round-trips + range-read bug (#7056) + context cancel (#7395)</td>
         </tr>
         <tr>
-          <td style="color:var(--sw)">SW (Soak 1hr)</td>
+          <td>SW (Soak 1hr)</td>
           <td class="num fail">-83% (160 → 28)</td>
           <td class="num">~0x (0.03% → 0.03%)</td>
           <td class="num">Similar</td>
