@@ -1698,8 +1698,24 @@ RustFs over 1 hour:
           </table>
         </div>
       </div>
-      <div class="card" style="margin-top:12px;border-left:3px solid var(--green)">
-        <p style="font-size:12.5px"><strong>Key finding:</strong> RustFs is 20-35% faster at c1-c4 (no coordination overhead), converges at c64. But Ozone drops to 67-93% success rate for medium/large files — in production this means <strong>retries, backpressure, and potential data loss without proper error handling</strong>.</p>
+      <div class="card" style="margin-top:12px;border-left:3px solid var(--accent)">
+        <h3>Key Finding: All Three Converge — Network Is the PUT Bottleneck</h3>
+        <table class="cmp-table" style="margin-top:10px">
+          <thead><tr><th>System</th><th>c1 (3MB)</th><th>c16 (3MB)</th><th>c64 (3MB)</th><th>Success Rate</th><th>Write Path</th></tr></thead>
+          <tbody>
+            <tr><td>RustFs</td><td class="num better">13.2</td><td class="num better">37.2</td><td class="num">37.2</td><td class="ok">100%</td><td>Hash → erasure encode (4+4) → quorum write to local drives → fdatasync</td></tr>
+            <tr><td>Ozone</td><td class="num">11.1</td><td class="num">35.7</td><td class="num">37.3</td><td class="ok">100% (small) / <span style="color:var(--red)">67-93% (med/large)</span></td><td>S3G → OM openKey (Raft) → EC encode (6+3) → 3 DNs → OM commitKey</td></tr>
+            <tr><td style="color:var(--sw)">SeaweedFS</td><td class="num">10.1</td><td class="num">31.1</td><td class="num">37.3</td><td class="ok">100%</td><td>S3 GW → Filer → Volume Server (needle append) → Filer metadata (LevelDB)</td></tr>
+          </tbody>
+        </table>
+        <p style="font-size:12.5px;margin-top:10px"><strong>Why they all converge at c64 (~37 ops/s):</strong></p>
+        <ul style="font-size:12.5px">
+          <li><strong>1 GbE = 112 MB/s ceiling:</strong> 37 ops/s × 3MB = 111 MB/s ≈ wire speed. All three systems saturate the network at the same point.</li>
+          <li><strong>RustFs has a small edge at c1 (13.2 vs 10-11):</strong> No coordination overhead — hash(key) → write directly to local drives. No OM RPC, no Filer metadata write, no volume assignment.</li>
+          <li><strong>SeaweedFS is slightly slower at c1-c16:</strong> 2-step write (data to Volume Server, then metadata to Filer LevelDB) adds latency per request. But converges at c64 when network, not write path, is the limit.</li>
+          <li><strong>Ozone fails at medium/large:</strong> EC 6+3 stripe coordination across 3 datanodes + OM Raft round-trips create failure windows under load. RustFs and SeaweedFS maintain 100% success at all sizes.</li>
+        </ul>
+        <p style="font-size:12px;color:var(--text-dim);margin-top:8px"><strong>⚠ Critical difference:</strong> Ozone drops to 67-93% success rate for medium (10MB) and large (64MB) PUTs under load — EC stripe coordination failures + OM timeout pressure. RustFs and SeaweedFS both maintain <strong>100% success rate at every size and concurrency</strong>. For write-intensive workloads where data loss is unacceptable, this reliability gap matters more than raw throughput.</p>
       </div>
     </div>
   </details>
@@ -1730,8 +1746,70 @@ RustFs over 1 hour:
           </table>
         </div>
       </div>
-      <div class="card" style="margin-top:12px;border-left:3px solid var(--blue)">
-        <p style="font-size:12.5px"><strong>Key finding:</strong> RustFs wins at low concurrency (1.7x at c1) but <strong>plateaus at c16</strong> due to O_DIRECT disk saturation. Ozone keeps scaling to 5,915 ops/s at c64 (5x faster). If your workload has bursty reads (CDN, viral content, ML training), Ozone dramatically outperforms.</p>
+      <div class="card" style="margin-top:12px;border-left:3px solid var(--accent)">
+        <h3>Key Finding: Three Different Scaling Curves</h3>
+        <table class="cmp-table" style="margin-top:10px">
+          <thead><tr><th>System</th><th>c1</th><th>c4</th><th>c16</th><th>c64</th><th>Scaling Pattern</th></tr></thead>
+          <tbody>
+            <tr><td>RustFs Path</td><td class="num">157</td><td class="num">686</td><td class="num">1,207</td><td class="num">1,197</td><td>Plateaus at c16 — O_DIRECT means every read hits physical disk (~500 MB/s SATA SSD). 16+ readers saturate the disk.</td></tr>
+            <tr><td>Ozone Path</td><td class="num">93</td><td class="num">528</td><td class="num">2,193</td><td class="num better">5,915</td><td>Scales linearly to c64 — OS page cache serves hot data from RAM (7 GB/s). No disk bottleneck for repeated reads.</td></tr>
+            <tr><td style="color:var(--sw)">SW Path</td><td class="num better">217</td><td class="num better">1,320</td><td class="num better">5,746</td><td class="num better">20,203</td><td>Scales 3.4× past Ozone — Haystack O(1) needle lookup (16-byte in-memory index) + page cache + no EC decode overhead (replication, not EC).</td></tr>
+          </tbody>
+        </table>
+        <p style="font-size:12.5px;margin-top:10px"><strong>Why SeaweedFS dominates GET:</strong></p>
+        <ul style="font-size:12.5px">
+          <li><strong>O(1) needle lookup:</strong> Volume server keeps <code>&lt;fileKey, offset, size&gt;</code> (16 bytes) in memory per file. One memory lookup → one disk read. No RocksDB query, no OM RPC.</li>
+          <li><strong>No EC decode:</strong> SeaweedFS uses replication (not erasure coding in our test). Read = single <code>ReadAt()</code> from one volume. RustFs reads 4+ shards and decodes; Ozone reads 6 chunks across 3 datanodes and decodes.</li>
+          <li><strong>Page cache:</strong> Like Ozone, SW uses standard Go I/O → hot data served from RAM. Unlike RustFs which bypasses cache with O_DIRECT.</li>
+          <li><strong>Minimal hops:</strong> Filer resolves metadata from in-process LevelDB → one HTTP call to Volume Server. Ozone requires S3G → OM (RPC) → DataNodes (gRPC × 6 chunks).</li>
+        </ul>
+        <p style="font-size:12px;color:var(--text-dim);margin-top:8px"><strong>⚠ InputStream caveat:</strong> SW InputStream collapses to <strong>80 ops/s</strong> at c64 (vs 20K Path) — a 250× gap. Root cause: Filer proxies every byte of streamed reads through its own memory buffers, with per-chunk HTTP round-trips to Volume Server. Confirmed bugs: range-read triggers full-file reads (<a href="https://github.com/seaweedfs/seaweedfs/issues/7056" style="color:var(--accent)">#7056</a>), context cancellation during streaming (<a href="https://github.com/seaweedfs/seaweedfs/issues/7395" style="color:var(--accent)">#7395</a>).</p>
+      </div>
+
+      <!-- Why InputStream is broken in SeaweedFS vs working in Ozone -->
+      <div class="card" style="margin-top:12px;border-left:3px solid var(--red)">
+        <h3 style="color:var(--red)">Why SeaweedFS InputStream Crashes to 80 ops/s While Ozone Keeps 5,230</h3>
+        <p style="font-size:13px;margin:8px 0">Both systems have a proxy layer (Filer / S3G), but the data path is fundamentally different:</p>
+        <div class="arch-compare" style="margin-top:10px">
+          <div class="arch-card">
+            <h4><span class="dot dot-ozone"></span> Ozone — Direct DataNode Streams</h4>
+            <pre>InputStream GET → S3G → OM: "Where is object X?"
+  OM returns: [DN1:chunk1, DN2:chunk2, ..., DN3:chunk6]
+
+  ECKeyInputStream opens gRPC streams to DataNodes:
+    DN1 ──stream──→ S3G (EC decode in S3G memory)
+    DN2 ──stream──→     → assembled bytes → Client
+    DN3 ──stream──→
+
+  Key: persistent gRPC streams, no per-chunk round-trip
+  Result: 5,230 ops/s (only 12% slower than Path)</pre>
+          </div>
+          <div class="arch-card">
+            <h4><span class="dot dot-sw"></span> SeaweedFS — Filer Proxies Every Byte</h4>
+            <pre>InputStream GET → S3 GW → Filer:
+  Filer looks up LevelDB → volumeId + needle offset
+
+  For EACH chunk of a chunked file:
+    Filer ──HTTP GET──→ Volume Server
+    Volume Server ──response──→ Filer (buffered in Go RAM)
+    Filer ──stream──→ Client
+
+  Key: per-chunk HTTP round-trip, data copied through Filer
+  + Bug #7056: range requests read ENTIRE file
+  + Bug #7395: context cancellation kills slow streams
+  Result: 80 ops/s (250× slower than Path)</pre>
+          </div>
+        </div>
+        <table class="cmp-table" style="margin-top:10px">
+          <thead><tr><th>Factor</th><th>Ozone S3G</th><th>SeaweedFS Filer</th></tr></thead>
+          <tbody>
+            <tr><td><strong>Data source connection</strong></td><td>Persistent gRPC streams to DataNodes</td><td>New HTTP request per chunk to Volume Server</td></tr>
+            <tr><td><strong>Data buffering</strong></td><td>EC chunks decoded in-memory, streamed out</td><td>Full chunk buffered in Filer Go memory, then re-streamed</td></tr>
+            <tr><td><strong>Network copies</strong></td><td>DN → S3G → Client (1 proxy, streaming)</td><td>Volume → Filer (buffered) → Client (2 copies with buffer gap)</td></tr>
+            <tr><td><strong>Under c64 load</strong></td><td>64 × persistent gRPC streams — manageable</td><td>64 × per-chunk HTTP round-trips — Filer CPU/memory/bandwidth saturated</td></tr>
+            <tr><td><strong>Path vs IS gap</strong></td><td>5,915 → 5,230 (<strong>-12%</strong>)</td><td>20,203 → 80 (<strong>-99.6%</strong>)</td></tr>
+          </tbody>
+        </table>
       </div>
     </div>
   </details>
@@ -1759,8 +1837,23 @@ RustFs over 1 hour:
           </table>
         </div>
       </div>
-      <div class="card" style="margin-top:12px;border-left:3px solid var(--blue)">
-        <p style="font-size:12.5px"><strong>Key finding:</strong> Ozone is 6.4x faster at c64 (10,188 vs 1,585 ops/s). RustFs reads xl.meta from 8 drives per HEAD; Ozone does a single RocksDB point lookup from memory. For metadata-heavy workloads (cache validation, existence checks), this is decisive.</p>
+      <div class="card" style="margin-top:12px;border-left:3px solid var(--accent)">
+        <h3>Key Finding: Metadata Lookup Architecture Determines HEAD Speed</h3>
+        <table class="cmp-table" style="margin-top:10px">
+          <thead><tr><th>System</th><th>c1</th><th>c4</th><th>c16</th><th>c64</th><th>Why This Speed?</th></tr></thead>
+          <tbody>
+            <tr><td>RustFs</td><td class="num">189</td><td class="num">858</td><td class="num">1,590</td><td class="num">1,585</td><td>Reads xl.meta from quorum of 8 drives (EC 4+4) — physical disk I/O per HEAD. Plateaus at c16 (same O_DIRECT saturation as GET).</td></tr>
+            <tr><td>Ozone</td><td class="num">333</td><td class="num">1,599</td><td class="num">6,424</td><td class="num better">10,188</td><td>Single RocksDB point lookup via OM — key metadata in block cache (RAM). No disk I/O, no data transfer.</td></tr>
+            <tr><td style="color:var(--sw)">SeaweedFS</td><td class="num better">328</td><td class="num better">1,723</td><td class="num better">7,294</td><td class="num better">24,353</td><td>In-process LevelDB lookup — no RPC to external server. Filer resolves (dir, name) → metadata in its own embedded store. No volume server contact needed for HEAD.</td></tr>
+          </tbody>
+        </table>
+        <p style="font-size:12.5px;margin-top:10px"><strong>Why SeaweedFS is 2.4× faster than Ozone at c64:</strong></p>
+        <ul style="font-size:12.5px">
+          <li><strong>In-process vs RPC:</strong> SeaweedFS Filer reads LevelDB in the same process (function call). Ozone S3G sends an RPC to OM (network round-trip + serialization).</li>
+          <li><strong>1 process vs 2:</strong> SW HEAD = Filer reads its own LevelDB. Ozone HEAD = S3G → OM RPC → RocksDB → response back to S3G. Extra hop adds ~0.1ms per request — at c64 that's significant.</li>
+          <li><strong>No volume server contact:</strong> SW stores all metadata (size, modified time, content type) in the Filer store. HEAD never touches volume servers. Ozone similarly doesn't touch DNs for HEAD.</li>
+        </ul>
+        <p style="font-size:12px;color:var(--text-dim);margin-top:8px"><strong>RustFs bottleneck:</strong> HEAD requires reading xl.meta from disk (quorum of drives in the erasure set). Unlike Ozone/SW which keep metadata in memory-backed key-value stores, RustFs has no metadata index — it must read from physical drives even for a simple existence check. At c64, 64 concurrent HEAD requests all compete for disk I/O, hitting the same O_DIRECT saturation ceiling as GET.</p>
       </div>
     </div>
   </details>
@@ -1788,8 +1881,23 @@ RustFs over 1 hour:
           </table>
         </div>
       </div>
-      <div class="card" style="margin-top:12px;border-left:3px solid var(--blue)">
-        <p style="font-size:12.5px"><strong>Key finding:</strong> The largest gap in the entire benchmark — Ozone 20-60x faster. RustFs walks filesystem directories (O(N) scan), Ozone seeks in RocksDB (O(log N)). If your application does frequent listing (data lake queries, folder browsing, incremental sync), RustFs is essentially unusable at scale.</p>
+      <div class="card" style="margin-top:12px;border-left:3px solid var(--accent)">
+        <h3>Key Finding: Metadata Index vs Filesystem Walk — 60× Gap</h3>
+        <table class="cmp-table" style="margin-top:10px">
+          <thead><tr><th>System</th><th>Metadata Store</th><th>LIST at c16</th><th>Complexity</th></tr></thead>
+          <tbody>
+            <tr><td>RustFs</td><td>None — filesystem directories across 8 drives (EC 4+4)</td><td class="num">4.3 ops/s</td><td>O(N) — walks all directories, reads xl.meta per object, per-prefix deduplication</td></tr>
+            <tr><td>Ozone</td><td>RocksDB (sorted LSM tree) in OM</td><td class="num better">245 ops/s</td><td>O(log N + K) — sorted key range scan, K=1000 objects returned. Hot keys in block cache.</td></tr>
+            <tr><td style="color:var(--sw)">SeaweedFS</td><td>LevelDB (sorted LSM tree) in Filer</td><td class="num better">320 ops/s</td><td>O(log N + K) — same family as RocksDB. In-process (no RPC). LIST never touches volume servers.</td></tr>
+          </tbody>
+        </table>
+        <p style="font-size:12.5px;margin-top:10px"><strong>Why SeaweedFS has a slight edge over Ozone (1.1-1.4×):</strong></p>
+        <ul style="font-size:12.5px">
+          <li><strong>LevelDB vs RocksDB:</strong> LevelDB is simpler (fewer features, less overhead per operation). RocksDB adds column families, compaction strategies, bloom filters — powerful but heavier per-query.</li>
+          <li><strong>In-process vs RPC:</strong> Filer reads its own embedded LevelDB directly (function call). Ozone S3G sends an RPC to OM, which queries RocksDB and serializes the response back.</li>
+          <li><strong>No Raft on read path:</strong> Filer reads local LevelDB with no consensus overhead. Ozone OM reads go through the Ratis state machine (even single-node Ratis has dispatch overhead).</li>
+        </ul>
+        <p style="font-size:12px;color:var(--text-dim);margin-top:8px"><strong>Both Ozone and SeaweedFS are 60-75× faster than RustFs</strong> because they use LSM-tree key-value stores for metadata. LIST = sorted range scan starting at prefix. RustFs has <strong>no metadata index</strong> — it uses the filesystem itself, meaning physical directory walks across multiple drives for every LIST call. At 1,000 pre-seeded objects, this is already 60× slower. At millions of objects, the gap would be even larger.</p>
       </div>
     </div>
   </details>
