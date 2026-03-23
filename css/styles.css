@@ -12,6 +12,7 @@
     --red: #f87171;
     --blue: #60a5fa;
     --purple: #a78bfa;
+    --sw: #d4a053;
     --cyan: #22d3ee;
     --radius: 10px;
     --shadow: 0 2px 12px rgba(0,0,0,.35);
@@ -72,6 +73,7 @@
   .winner-rustfs { background: rgba(52,211,153,.15); color: var(--green); }
   .winner-ozone { background: rgba(96,165,250,.15); color: var(--blue); }
   .winner-tie { background: rgba(251,191,36,.15); color: var(--amber); }
+  .winner-sw { background: rgba(212,160,83,.15); color: var(--sw); }
 
   /* ── Comparison Table ────────────────────────────────── */
   .cmp-table { width: 100%; border-collapse: collapse; font-size: 13px; }
@@ -98,6 +100,7 @@
   .arch-card .dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
   .dot-rustfs { background: var(--green); }
   .dot-ozone { background: var(--blue); }
+  .dot-sw { background: var(--sw); }
   .arch-card pre { background: var(--bg); padding: 14px; border-radius: 6px; font-size: 12px; line-height: 1.7; overflow-x: auto; color: var(--text-dim); margin: 10px 0; white-space: pre; font-family: 'JetBrains Mono', 'SF Mono', monospace; }
   .arch-card ul { padding-left: 18px; }
   .arch-card li { margin-bottom: 6px; font-size: 13px; }
@@ -118,6 +121,7 @@
   .verdict-bar { display: flex; height: 8px; border-radius: 4px; overflow: hidden; margin: 8px 0 4px; }
   .verdict-bar .seg-rustfs { background: var(--green); }
   .verdict-bar .seg-ozone { background: var(--blue); }
+  .verdict-bar .seg-sw { background: var(--sw); }
   .verdict-bar .seg-tie { background: var(--amber); }
   .verdict-labels { display: flex; justify-content: space-between; font-size: 11px; color: var(--text-dim); }
 

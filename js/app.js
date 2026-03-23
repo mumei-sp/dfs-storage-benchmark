@@ -1,7 +1,7 @@
 // ── Tab switching ──────────────────────────────────────────────────────────
 const moreBtn = document.getElementById('moreBtn');
 const moreMenu = document.getElementById('moreMenu');
-const moreTabs = ['scenarios','deepdive','arch','iopath','setup'];
+const moreTabs = ['scenarios','deepdive','arch','iopath','setup','capacity'];
 
 function switchToTab(tabId) {
   // Deactivate all
@@ -94,28 +94,36 @@ makeBarChart('chartOverviewPut', cLabels,
   [ds('rustfs_path', [13.23, 35.22, 37.23, 37.22]),
    ds('rustfs_is',   [11.99, 33.40, 37.32, 37.34]),
    ds('ozone_path',  [11.13, 26.19, 35.67, 37.26]),
-   ds('ozone_is',    [11.52, 26.44, 36.24, 37.28])],
+   ds('ozone_is',    [11.52, 26.44, 36.24, 37.28]),
+   ds('sw_path',     [10.05, 27.57, 31.13, 37.31]),
+   ds('sw_is',       [11.32, 26.86, 31.34, 37.11])],
   'ops/s');
 
 makeBarChart('chartOverviewGet', cLabels,
   [ds('rustfs_path', [156.48, 685.70, 1206.82, 1196.80]),
    ds('rustfs_is',   [117.92, 518.55, 1205.64, 1271.53]),
    ds('ozone_path',  [92.75, 527.55, 2192.74, 5914.80]),
-   ds('ozone_is',    [75.23, 422.95, 1754.63, 5229.65])],
+   ds('ozone_is',    [75.23, 422.95, 1754.63, 5229.65]),
+   ds('sw_path',     [216.63, 1319.88, 5745.50, 20203.07]),
+   ds('sw_is',       [1.26, 5.07, 20.14, 80.42])],
   'ops/s');
 
 makeBarChart('chartOverviewHead', cLabels,
   [ds('rustfs_path', [188.90, 857.63, 1589.90, 1584.78]),
    ds('rustfs_is',   [134.97, 558.97, 1436.42, 1561.03]),
    ds('ozone_path',  [333.20, 1598.94, 6423.79, 10188.08]),
-   ds('ozone_is',    [218.68, 1192.62, 4626.49, 9093.30])],
+   ds('ozone_is',    [218.68, 1192.62, 4626.49, 9093.30]),
+   ds('sw_path',     [328.26, 1722.83, 7294.25, 24353.41]),
+   ds('sw_is',       [404.75, 1978.65, 7208.59, 24002.93])],
   'ops/s');
 
 makeBarChart('chartOverviewList', cLabels3,
   [ds('rustfs_path', [3.97, 5.11, 4.29]),
    ds('rustfs_is',   [3.75, 7.13, 7.39]),
    ds('ozone_path',  [23.77, 115.63, 245.36]),
-   ds('ozone_is',    [7.85, 35.87, 138.98])],
+   ds('ozone_is',    [7.85, 35.87, 138.98]),
+   ds('sw_path',     [41.54, 158.18, 261.68]),
+   ds('sw_is',       [39.40, 155.58, 299.51])],
   'ops/s');
 
 // ── LIST charts ───────────────────────────────────────────────────────────
@@ -123,14 +131,18 @@ makeLineChart('chartListTiny', cLabels3,
   [ds('rustfs_path', [3.97, 5.11, 4.29]),
    ds('rustfs_is',   [3.75, 7.13, 7.39]),
    ds('ozone_path',  [23.77, 115.63, 245.36]),
-   ds('ozone_is',    [7.85, 35.87, 138.98])],
+   ds('ozone_is',    [7.85, 35.87, 138.98]),
+   ds('sw_path',     [41.54, 158.18, 261.68]),
+   ds('sw_is',       [39.40, 155.58, 299.51])],
   'ops/s');
 
 makeLineChart('chartListLatency', cLabels3,
   [ds('rustfs_path', [250.7, 785.4, 3722]),
    ds('rustfs_is',   [267.4, 544.7, 2160]),
    ds('ozone_path',  [43.2, 33.0, 64.6]),
-   ds('ozone_is',    [128.5, 112.8, 114.8])],
+   ds('ozone_is',    [128.5, 112.8, 114.8]),
+   ds('sw_path',     [23.5, 24.6, 58.9]),
+   ds('sw_is',       [25.4, 25.0, 49.6])],
   'p50 (ms)');
 
 // ── PUT charts ────────────────────────────────────────────────────────────
@@ -138,41 +150,53 @@ makeBarChart('chartPutSmall', cLabels,
   [ds('rustfs_path', [13.23, 35.22, 37.23, 37.22]),
    ds('rustfs_is',   [11.99, 33.40, 37.32, 37.34]),
    ds('ozone_path',  [11.13, 26.19, 35.67, 37.26]),
-   ds('ozone_is',    [11.52, 26.44, 36.24, 37.28])],
+   ds('ozone_is',    [11.52, 26.44, 36.24, 37.28]),
+   ds('sw_path',     [10.05, 27.57, 31.13, 37.31]),
+   ds('sw_is',       [11.32, 26.86, 31.34, 37.11])],
   'ops/s');
 
 makeLineChart('chartPutLatency', cLabels,
   [ds('rustfs_path', [141.7, 216.0, 494.9, 3166.7]),
    ds('rustfs_is',   [191.4, 310.1, 660.1, 3164.6]),
    ds('ozone_path',  [195.4, 521.7, 1162.9, 5976.9]),
-   ds('ozone_is',    [234.6, 537.9, 1133.5, 4852.8])],
+   ds('ozone_is',    [234.6, 537.9, 1133.5, 4852.8]),
+   ds('sw_path',     [180.6, 239.7, 684.2, 3275.8]),
+   ds('sw_is',       [166.5, 242.9, 693.6, 3206.6])],
   'p99 latency (ms)');
 
 makeBarChart('chartPutSuccess', cLabels3,
   [ds('rustfs_path', [100, 100, 100]),
    ds('ozone_path',  [100, 91.5, 93.8]),
-   ds('ozone_is',    [100, 92.3, 93.1])],
+   ds('ozone_is',    [100, 92.3, 93.1]),
+   ds('sw_path',     [100, 100, 100]),
+   ds('sw_is',       [100, 100, 100])],
   'Success %');
 
 makeBarChart('chartPutMedium', cLabels3,
   [ds('rustfs_path', [4.38, 10.67, 11.17]),
    ds('rustfs_is',   [4.94, 10.62, 11.19]),
    ds('ozone_path',  [4.50, 9.27, 11.11]),
-   ds('ozone_is',    [4.44, 9.51, 11.16])],
+   ds('ozone_is',    [4.44, 9.51, 11.16]),
+   ds('sw_path',     [5.63, 10.06, 10.90]),
+   ds('sw_is',       [5.70, 10.12, 11.04])],
   'ops/s');
 
 makeBarChart('chartPutLarge', cLabels3,
   [ds('rustfs_path', [1.54, 1.69, 1.75]),
    ds('rustfs_is',   [1.52, 1.75, 1.75]),
    ds('ozone_path',  [1.17, 1.71, 1.74]),
-   ds('ozone_is',    [1.10, 1.70, 1.71])],
+   ds('ozone_is',    [1.10, 1.70, 1.71]),
+   ds('sw_path',     [1.51, 1.68, 1.75]),
+   ds('sw_is',       [1.51, 1.72, 1.73])],
   'ops/s');
 
 makeBarChart('chartPutLargeSuccess', cLabels3,
   [ds('rustfs_path', [100, 100, 100]),
    ds('rustfs_is',   [100, 100, 100]),
    ds('ozone_path',  [100, 98.3, 71.2]),
-   ds('ozone_is',    [100, 98.1, 66.5])],
+   ds('ozone_is',    [100, 98.1, 66.5]),
+   ds('sw_path',     [100, 100, 100]),
+   ds('sw_is',       [100, 100, 100])],
   'Success %');
 
 // ── GET charts ────────────────────────────────────────────────────────────
@@ -180,28 +204,36 @@ makeLineChart('chartGetSmall', cLabels,
   [ds('rustfs_path', [156.48, 685.70, 1206.82, 1196.80]),
    ds('rustfs_is',   [117.92, 518.55, 1205.64, 1271.53]),
    ds('ozone_path',  [92.75, 527.55, 2192.74, 5914.80]),
-   ds('ozone_is',    [75.23, 422.95, 1754.63, 5229.65])],
+   ds('ozone_is',    [75.23, 422.95, 1754.63, 5229.65]),
+   ds('sw_path',     [216.63, 1319.88, 5745.50, 20203.07]),
+   ds('sw_is',       [1.26, 5.07, 20.14, 80.42])],
   'ops/s');
 
 makeLineChart('chartGetLatency', cLabels,
   [ds('rustfs_path', [6.07, 5.53, 12.80, 52.92]),
    ds('rustfs_is',   [7.59, 7.09, 12.02, 14.94]),
    ds('ozone_path',  [10.23, 7.53, 7.13, 10.14]),
-   ds('ozone_is',    [12.26, 9.29, 8.81, 11.22])],
+   ds('ozone_is',    [12.26, 9.29, 8.81, 11.22]),
+   ds('sw_path',     [4.35, 3.01, 2.75, 3.02]),
+   ds('sw_is',       [4.79, 3.85, 3.20, 2.78])],
   'p50 (ms)');
 
 makeBarChart('chartGetMedium', cLabels3,
   [ds('rustfs_path', [203.53, 688.73, 1178.91]),
    ds('rustfs_is',   [124.67, 503.81, 1190.88]),
    ds('ozone_path',  [91.67, 512.48, 2124.46]),
-   ds('ozone_is',    [75.95, 426.45, 1772.86])],
+   ds('ozone_is',    [75.95, 426.45, 1772.86]),
+   ds('sw_path',     [252.84, 1451.76, 5940.66]),
+   ds('sw_is',       [1.26, 5.07, 20.14])],
   'ops/s');
 
 makeBarChart('chartGetLarge', cLabels3,
   [ds('rustfs_path', [171.74, 681.00, 1181.34]),
    ds('rustfs_is',   [122.60, 505.11, 1227.56]),
    ds('ozone_path',  [91.12, 511.24, 2107.06]),
-   ds('ozone_is',    [71.59, 461.60, 1952.06])],
+   ds('ozone_is',    [71.59, 461.60, 1952.06]),
+   ds('sw_path',     [244.63, 1457.47, 5803.60]),
+   ds('sw_is',       [1.26, 5.07, 20.15])],
   'ops/s');
 
 // ── HEAD charts ───────────────────────────────────────────────────────────
@@ -209,14 +241,18 @@ makeLineChart('chartHeadOps', cLabels,
   [ds('rustfs_path', [188.90, 857.63, 1589.90, 1584.78]),
    ds('rustfs_is',   [134.97, 558.97, 1436.42, 1561.03]),
    ds('ozone_path',  [333.20, 1598.94, 6423.79, 10188.08]),
-   ds('ozone_is',    [218.68, 1192.62, 4626.49, 9093.30])],
+   ds('ozone_is',    [218.68, 1192.62, 4626.49, 9093.30]),
+   ds('sw_path',     [328.26, 1722.83, 7294.25, 24353.41]),
+   ds('sw_is',       [404.75, 1978.65, 7208.59, 24002.93])],
   'ops/s');
 
 makeLineChart('chartHeadLatency', cLabels,
   [ds('rustfs_path', [4.91, 4.40, 9.73, 39.29]),
    ds('rustfs_is',   [6.43, 5.87, 9.48, 11.15]),
    ds('ozone_path',  [2.94, 2.46, 2.35, 5.88]),
-   ds('ozone_is',    [4.53, 3.30, 3.24, 6.44])],
+   ds('ozone_is',    [4.53, 3.30, 3.24, 6.44]),
+   ds('sw_path',     [2.83, 2.38, 2.30, 2.55]),
+   ds('sw_is',       [2.44, 1.88, 2.24, 2.51])],
   'p50 (ms)');
 
 // ── DELETE charts ─────────────────────────────────────────────────────────
@@ -224,14 +260,18 @@ makeBarChart('chartDeleteOps', cLabels3,
   [ds('rustfs_path', [45.17, 160.84, 182.88]),
    ds('rustfs_is',   [36.38, 142.45, 278.82]),
    ds('ozone_path',  [29.26, 173.99, 555.89]),
-   ds('ozone_is',    [22.59, 129.91, 464.66])],
+   ds('ozone_is',    [22.59, 129.91, 464.66]),
+   ds('sw_path',     [30.55, 139.48, 619.82]),
+   ds('sw_is',       [33.23, 153.32, 643.05])],
   'ops/s');
 
 makeLineChart('chartDeleteLatency', cLabels3,
   [ds('rustfs_path', [10.27, 12.32, 63.34]),
    ds('rustfs_is',   [12.88, 13.80, 35.85]),
    ds('ozone_path',  [8.93, 4.82, 4.70]),
-   ds('ozone_is',    [11.90, 6.87, 6.56])],
+   ds('ozone_is',    [11.90, 6.87, 6.56]),
+   ds('sw_path',     [5.38, 4.16, 2.83]),
+   ds('sw_is',       [4.83, 3.50, 2.62])],
   'p50 (ms)');
 
 // ── Consistency charts ────────────────────────────────────────────────────
@@ -239,14 +279,18 @@ makeBarChart('chartRAW', cLabels3,
   [ds('rustfs_path', [100, 100, 100]),
    ds('rustfs_is',   [100, 100, 100]),
    ds('ozone_path',  [0, 0, 0]),
-   ds('ozone_is',    [0, 0, 0])],
+   ds('ozone_is',    [0, 0, 0]),
+   ds('sw_path',     [0, 0, 0]),
+   ds('sw_is',       [0, 0, 0])],
   'Success %');
 
 makeBarChart('chartOverwrite', ['c16', 'c64'],
   [ds('rustfs_path', [92.9, 69.7]),
    ds('rustfs_is',   [90.0, 83.8]),
    ds('ozone_path',  [0, 1.1]),
-   ds('ozone_is',    [0, 0])],
+   ds('ozone_is',    [0, 0]),
+   ds('sw_path',     [100, 100]),
+   ds('sw_is',       [100, 100])],
   'Success %');
 
 // ── Mixed / Soak charts ──────────────────────────────────────────────────
@@ -254,16 +298,18 @@ makeBarChart('chartMixed', ['Read-Heavy c16', 'Read-Heavy c64', 'Write-Heavy c16
   [ds('rustfs_path', [185.30, 187.64, 52.84, 53.21]),
    ds('rustfs_is',   [186.14, 188.86, 53.06, 53.46]),
    ds('ozone_path',  [183.08, 183.31, 52.13, 53.04]),
-   ds('ozone_is',    [183.84, 184.85, 52.58, 42.35])],
+   ds('ozone_is',    [183.84, 184.85, 52.58, 42.35]),
+   ds('sw_path',     [170.26, 183.36, 46.39, 53.74]),
+   ds('sw_is',       [27.38, 106.55, 46.49, 51.15])],
   'ops/s');
 
 new Chart(document.getElementById('chartSoak'), {
   type: 'bar',
   data: {
-    labels: ['RustFs Path', 'RustFs IS', 'Ozone Path', 'Ozone IS'],
+    labels: ['RustFs Path', 'RustFs IS', 'Ozone Path', 'Ozone IS', 'SW Path', 'SW IS'],
     datasets: [
-      { label: 'Success', data: [671037, 665745, 3532011, 3167162], backgroundColor: '#34d399' },
-      { label: 'Failures', data: [0, 0, 881589, 791857], backgroundColor: '#f87171' }
+      { label: 'Success', data: [671037, 665745, 3532011, 3167162, 576986, 95727], backgroundColor: '#34d399' },
+      { label: 'Failures', data: [0, 0, 881589, 791857, 0, 4200], backgroundColor: '#f87171' }
     ]
   },
   options: {
@@ -279,14 +325,15 @@ new Chart(document.getElementById('chartSoak'), {
 // ── Summary table ─────────────────────────────────────────────────────────
 const tbody = document.querySelector('#summaryTable tbody');
 summaryRows.forEach(r => {
-  const winner = r[6];
-  const cls = winner === 'RustFs' ? 'winner-rustfs' : winner === 'Ozone' ? 'winner-ozone' : 'winner-tie';
+  const winner = r[8];
+  const cls = winner.includes('RustFs') ? 'winner-rustfs' : winner.includes('Ozone') ? 'winner-ozone' : winner.includes('SW') || winner.includes('Seaweed') ? 'winner-sw' : 'winner-tie';
   tbody.innerHTML += `<tr>
     <td>${r[1]}</td>
     <td class="num">${r[2]}</td><td class="num">${r[3]}</td>
     <td class="num">${r[4]}</td><td class="num">${r[5]}</td>
+    <td class="num">${r[6]}</td><td class="num">${r[7]}</td>
     <td><span class="winner ${cls}">${winner}</span></td>
-    <td class="num">${r[7]}</td>
+    <td class="num">${r[9]}</td>
   </tr>`;
 });
 
@@ -296,46 +343,60 @@ summaryRows.forEach(r => {
 
 // Latency percentile charts (grouped bar: p50, p75, p90, p95, p99)
 
-function makePctChart(id, rp, ri, op, oi) {
-  makeBarChart(id, pctLabels,
-    [ds('rustfs_path', rp), ds('rustfs_is', ri), ds('ozone_path', op), ds('ozone_is', oi)], 'ms');
+function makePctChart(id, rp, ri, op, oi, sp, si) {
+  const datasets = [ds('rustfs_path', rp), ds('rustfs_is', ri), ds('ozone_path', op), ds('ozone_is', oi)];
+  if (sp) datasets.push(ds('sw_path', sp));
+  if (si) datasets.push(ds('sw_is', si));
+  makeBarChart(id, pctLabels, datasets, 'ms');
 }
 
 makePctChart('chartPctPutC16',
   [428.6, 437.0, 445.6, 453.2, 494.9],
   [425.5, 429.9, 436.5, 446.7, 660.1],
   [399.5, 557.8, 738.2, 875.0, 1162.9],
-  [398.2, 542.6, 703.6, 822.1, 1133.5]);
+  [398.2, 542.6, 703.6, 822.1, 1133.5],
+  [512.8, 530.8, 594.5, 619.7, 684.2],
+  [514.3, 530.1, 583.0, 617.1, 693.6]);
 
 makePctChart('chartPctPutC64',
   [1686.1, 1696.6, 1719.7, 1749.0, 3166.7],
   [1620.1, 1654.7, 1827.7, 2602.6, 3164.6],
   [1384.1, 2300.6, 3410.0, 4284.5, 5976.9],
-  [1490.0, 2332.0, 3120.6, 3716.2, 4852.8]);
+  [1490.0, 2332.0, 3120.6, 3716.2, 4852.8],
+  [1656.8, 1706.0, 1767.9, 1843.4, 3275.8],
+  [1670.4, 1727.0, 1801.5, 1882.2, 3206.6]);
 
 makePctChart('chartPctGetC16',
   [12.8, 14.3, 15.8, 16.9, 19.7],
   [12.0, 13.9, 16.3, 18.1, 22.5],
   [7.1, 7.8, 8.3, 8.8, 11.4],
-  [8.8, 9.2, 9.7, 10.7, 17.4]);
+  [8.8, 9.2, 9.7, 10.7, 17.4],
+  [2.7, 3.2, 3.4, 3.5, 3.7],
+  [3.2, 3.8, 5.4, 13203.7, 13203.7]);
 
 makePctChart('chartPctGetC64',
   [52.9, 57.6, 62.4, 65.9, 74.2],
   [14.9, 18.4, 24.6, 34.1, 274.7],
   [10.1, 12.2, 14.6, 16.0, 19.0],
-  [11.2, 13.3, 17.0, 18.3, 21.1]);
+  [11.2, 13.3, 17.0, 18.3, 21.1],
+  [3.0, 3.6, 4.0, 4.4, 5.6],
+  [2.8, 3.3, 4.6, 13203.7, 13203.7]);
 
 makePctChart('chartPctHeadC64',
   [39.3, 44.1, 49.1, 52.5, 59.7],
   [11.1, 14.7, 23.0, 29.6, 264.4],
   [5.9, 7.2, 8.8, 10.0, 12.5],
-  [6.4, 7.7, 10.1, 11.7, 15.1]);
+  [6.4, 7.7, 10.1, 11.7, 15.1],
+  [2.6, 3.1, 3.4, 3.7, 4.4],
+  [2.5, 2.9, 3.4, 3.8, 5.8]);
 
 makePctChart('chartPctPutLgC16',
   [9596.6, 10762.6, 11869.9, 13077.8, 16735.3],
   [9068.1, 10754.2, 12289.3, 13086.2, 15980.3],
   [9311.4, 11215.6, 12826.2, 13891.5, 16114.5],
-  [9940.5, 11626.6, 12549.4, 13371.4, 14394.9]);
+  [9940.5, 11626.6, 12549.4, 13371.4, 14394.9],
+  [8472.5, 8791.3, 14218.7, 15057.6, 17515.4],
+  [9395.2, 9454.0, 9504.3, 9529.5, 9605.0]);
 
 // Variance table
 const varBody = document.getElementById('varianceBody');
@@ -347,7 +408,7 @@ function vCell(mean, sd) {
 varData.forEach(r => {
   varBody.innerHTML += `<tr>
     <td><strong>${r[0]}</strong></td>
-    ${vCell(r[1],r[2])}${vCell(r[3],r[4])}${vCell(r[5],r[6])}${vCell(r[7],r[8])}
+    ${vCell(r[1],r[2])}${vCell(r[3],r[4])}${vCell(r[5],r[6])}${vCell(r[7],r[8])}${vCell(r[9],r[10])}${vCell(r[11],r[12])}
   </tr>`;
 });
 
@@ -357,7 +418,9 @@ makeBarChart('chartCpuLoad',
   [ds('rustfs_path', [5.06, 5.49, 2.41, 2.69]),
    ds('rustfs_is',   [4.67, 4.94, 3.41, 2.84]),
    ds('ozone_path',  [23.57, 32.61, 25.94, 1.80]),
-   ds('ozone_is',    [21.57, 29.24, 25.51, 2.27])],
+   ds('ozone_is',    [21.57, 29.24, 25.51, 2.27]),
+   ds('sw_path',     [55.00, 57.20, 7.60, 2.40]),
+   ds('sw_is',       [0.50, 54.30, 5.80, 3.10])],
   'CPU Load (%)');
 
 // Disk I/O chart
@@ -366,7 +429,9 @@ makeBarChart('chartDiskIO',
   [ds('rustfs_path', [265.1, 8.0, 378.6, 13.5]),
    ds('rustfs_is',   [39.8, 47.5, 354.3, 1.0]),
    ds('ozone_path',  [362.1, 355.6, 66.8, 264.4]),
-   ds('ozone_is',    [113.8, 183.5, 18.2, 551.8])],
+   ds('ozone_is',    [113.8, 183.5, 18.2, 551.8]),
+   ds('sw_path',     [107.5, 128.6, 561.5, 58.4]),
+   ds('sw_is',       [13.2, 112.2, 561.6, 1.5])],
   'Peak Disk MB/s');
 
 // Network I/O chart
@@ -375,7 +440,9 @@ makeBarChart('chartNetIO',
   [ds('rustfs_path', [113.9, 116.1, 113.2, 119.9]),
    ds('rustfs_is',   [114.8, 116.6, 113.5, 118.5]),
    ds('ozone_path',  [114.1, 114.4, 112.8, 121.4]),
-   ds('ozone_is',    [114.0, 114.7, 112.8, 118.7])],
+   ds('ozone_is',    [114.0, 114.7, 112.8, 118.7]),
+   ds('sw_path',     [113.4, 116.2, 113.4, 119.2]),
+   ds('sw_is',       [113.6, 116.7, 113.5, 118.5])],
   'Network MB/s');
 
 // MB/s throughput
@@ -384,20 +451,26 @@ makeBarChart('chartMbps',
   [ds('rustfs_path', [111.7, 106.7, 111.7, 111.8]),
    ds('rustfs_is',   [112.0, 106.2, 111.9, 111.7]),
    ds('ozone_path',  [107.0, 84.8, 79.5, 0.9]),
-   ds('ozone_is',    [108.7, 87.7, 72.6, 0.7])],
+   ds('ozone_is',    [108.7, 87.7, 72.6, 0.7]),
+   ds('sw_path',     [93.4, 100.6, 111.9, 96.4]),
+   ds('sw_is',       [94.0, 101.2, 110.8, 16.5])],
   'MB/s');
 
 // IS wins charts
 makeBarChart('chartISListWin',
   ['tiny', 'small', 'medium', 'large', 'xlarge'],
   [{label:'RustFs Path', data:[4.29, 4.29, 4.29, 4.30, 4.30], backgroundColor:'#34d39999', borderColor:'#34d399', borderWidth:2},
-   {label:'RustFs InputStream', data:[7.39, 7.37, 7.38, 7.36, 7.37], backgroundColor:'#6ee7b799', borderColor:'#6ee7b7', borderWidth:2}],
+   {label:'RustFs InputStream', data:[7.39, 7.37, 7.38, 7.36, 7.37], backgroundColor:'#6ee7b799', borderColor:'#6ee7b7', borderWidth:2},
+   {label:'SW Path', data:[261.68, 265.23, 319.88, 327.76, 242.14], backgroundColor:'#d4a05399', borderColor:'#d4a053', borderWidth:2},
+   {label:'SW InputStream', data:[299.51, 315.02, 250.59, 263.43, 261.16], backgroundColor:'#c4956a99', borderColor:'#c4956a', borderWidth:2}],
   'ops/s');
 
 makeBarChart('chartISDeleteWin',
   ['c1', 'c4', 'c16'],
   [{label:'RustFs Path', data:[45.17, 160.84, 182.88], backgroundColor:'#34d39999', borderColor:'#34d399', borderWidth:2},
-   {label:'RustFs InputStream', data:[36.38, 142.45, 278.82], backgroundColor:'#6ee7b799', borderColor:'#6ee7b7', borderWidth:2}],
+   {label:'RustFs InputStream', data:[36.38, 142.45, 278.82], backgroundColor:'#6ee7b799', borderColor:'#6ee7b7', borderWidth:2},
+   {label:'SW Path', data:[30.55, 139.48, 619.82], backgroundColor:'#d4a05399', borderColor:'#d4a053', borderWidth:2},
+   {label:'SW InputStream', data:[33.23, 153.32, 643.05], backgroundColor:'#c4956a99', borderColor:'#c4956a', borderWidth:2}],
   'ops/s');
 
 // ── Time-series charts ───────────────────────────────────────────────────
@@ -423,12 +496,13 @@ new Chart(document.getElementById('chartTsSoakOps'), {
   type: 'line',
   data: { labels: soakLabels, datasets: [
     {label:'RustFs Path', data:soakRustOps, borderColor:'#34d399', backgroundColor:'transparent', borderWidth:2, pointRadius:3, tension:.3, yAxisID:'y'},
-    {label:'Ozone Path', data:soakOzoneOps, borderColor:'#60a5fa', backgroundColor:'transparent', borderWidth:2, pointRadius:3, tension:.3, yAxisID:'y1'}
+    {label:'Ozone Path', data:soakOzoneOps, borderColor:'#60a5fa', backgroundColor:'transparent', borderWidth:2, pointRadius:3, tension:.3, yAxisID:'y1'},
+    {label:'SW Path', data:soakSwOps, borderColor:'#d4a053', backgroundColor:'transparent', borderWidth:2, pointRadius:3, tension:.3, yAxisID:'y'}
   ]},
   options: { responsive:true, maintainAspectRatio:false,
     interaction:{mode:'index',intersect:false},
     scales: {
-      y: {type:'linear',position:'left',title:{display:true,text:'RustFs ops/s'},min:170,max:195,grid:{display:false}},
+      y: {type:'linear',position:'left',title:{display:true,text:'RustFs/SW ops/s'},min:140,max:200,grid:{display:false}},
       y1:{type:'linear',position:'right',title:{display:true,text:'Ozone ops/s'},min:1100,max:1300,grid:{drawOnChartArea:false}},
       x:{grid:{display:false}}
     }
@@ -440,12 +514,13 @@ new Chart(document.getElementById('chartTsSoakP99'), {
   type: 'line',
   data: { labels: soakLabels, datasets: [
     {label:'RustFs Path p99', data:soakRustP99, borderColor:'#34d399', backgroundColor:'transparent', borderWidth:2, pointRadius:3, tension:.3, yAxisID:'y'},
-    {label:'Ozone Path p99', data:soakOzoneP99, borderColor:'#60a5fa', backgroundColor:'transparent', borderWidth:2, pointRadius:3, tension:.3, yAxisID:'y1'}
+    {label:'Ozone Path p99', data:soakOzoneP99, borderColor:'#60a5fa', backgroundColor:'transparent', borderWidth:2, pointRadius:3, tension:.3, yAxisID:'y1'},
+    {label:'SW Path p99', data:soakSwP99, borderColor:'#d4a053', backgroundColor:'transparent', borderWidth:2, pointRadius:3, tension:.3, yAxisID:'y'}
   ]},
   options: { responsive:true, maintainAspectRatio:false,
     interaction:{mode:'index',intersect:false},
     scales: {
-      y: {type:'linear',position:'left',title:{display:true,text:'RustFs p99 (ms)'},min:350,max:600,grid:{display:false}},
+      y: {type:'linear',position:'left',title:{display:true,text:'RustFs/SW p99 (ms)'},min:350,max:650,grid:{display:false}},
       y1:{type:'linear',position:'right',title:{display:true,text:'Ozone p99 (ms)'},min:20,max:60,grid:{drawOnChartArea:false}},
       x:{grid:{display:false}}
     }
@@ -454,10 +529,10 @@ new Chart(document.getElementById('chartTsSoakP99'), {
 
 // TTFB chart
 makeBarChart('chartTtfb',
-  ['RustFs c1', 'Ozone c1', 'RustFs c64', 'Ozone c64'],
-  [{label:'p50', data:[6.2, 10.3, 53.3, 10.6], backgroundColor:'#34d39999', borderColor:'#34d399', borderWidth:2},
-   {label:'p95', data:[7.6, 14.3, 66.2, 17.4], backgroundColor:'#60a5fa99', borderColor:'#60a5fa', borderWidth:2},
-   {label:'p99', data:[9.2, 15.6, 73.0, 23.8], backgroundColor:'#a78bfa99', borderColor:'#a78bfa', borderWidth:2}],
+  ['RustFs c1', 'Ozone c1', 'SW c1', 'RustFs c64', 'Ozone c64', 'SW c64'],
+  [{label:'p50', data:[6.2, 10.3, 4.4, 53.3, 10.6, 3.0], backgroundColor:'#34d39999', borderColor:'#34d399', borderWidth:2},
+   {label:'p95', data:[7.6, 14.3, 3.5, 66.2, 17.4, 4.4], backgroundColor:'#60a5fa99', borderColor:'#60a5fa', borderWidth:2},
+   {label:'p99', data:[9.2, 15.6, 3.7, 73.0, 23.8, 5.6], backgroundColor:'#d4a05399', borderColor:'#d4a053', borderWidth:2}],
   'TTFB (ms)');
 
 // ── I/O Path charts ──────────────────────────────────────────────────────
@@ -468,7 +543,9 @@ makeBarChart('chartGcPut',
   [ds('rustfs_path', [0.07, 0.09, 0.06, 0.18]),
    ds('rustfs_is',   [0.21, 0.36, 0.66, 0.28]),
    ds('ozone_path',  [0.03, 0.03, 0.24, 0.16]),
-   ds('ozone_is',    [0.11, 0.10, 0.44, 0.37])],
+   ds('ozone_is',    [0.11, 0.10, 0.44, 0.37]),
+   ds('sw_path',     [0.03, 0.04, 0.03, 0.08]),
+   ds('sw_is',       [0.11, 0.08, 0.22, 0.27])],
   'GC Overhead %');
 
 // GC Overhead GET/HEAD c64
@@ -477,39 +554,41 @@ makeBarChart('chartGcGet',
   [ds('rustfs_path', [0.06, 0.06, 0.14]),
    ds('rustfs_is',   [0.15, 0.13, 0.40]),
    ds('ozone_path',  [0.18, 0.21, 0.44]),
-   ds('ozone_is',    [0.13, 0.18, 0.66])],
+   ds('ozone_is',    [0.13, 0.18, 0.66]),
+   ds('sw_path',     [0.29, 0.22, 0.03]),
+   ds('sw_is',       [0.01, 0.23, 0.03])],
   'GC Overhead %');
 
 // GC Count
 makeBarChart('chartGcCount',
-  ['RustFs Path', 'RustFs IS', 'Ozone Path', 'Ozone IS'],
-  [{label:'GC Count (PUT small c64, 5min)', data:[117, 702, 55, 182],
-    backgroundColor:['#34d39999','#6ee7b799','#60a5fa99','#93c5fd99'],
-    borderColor:['#34d399','#6ee7b7','#60a5fa','#93c5fd'], borderWidth:2}],
+  ['RustFs Path', 'RustFs IS', 'Ozone Path', 'Ozone IS', 'SW Path', 'SW IS'],
+  [{label:'GC Count (PUT small c64, 5min)', data:[117, 702, 55, 182, 50, 104],
+    backgroundColor:['#34d39999','#6ee7b799','#60a5fa99','#93c5fd99','#d4a05399','#c4956a99'],
+    borderColor:['#34d399','#6ee7b7','#60a5fa','#93c5fd','#d4a053','#c4956a'], borderWidth:2}],
   'GC events');
 
 // Peak Heap PUT large c16
 makeBarChart('chartHeapPut',
-  ['RustFs Path', 'RustFs IS', 'Ozone Path', 'Ozone IS'],
-  [{label:'Peak Heap MB (PUT large c16)', data:[593, 1776, 488, 2045],
-    backgroundColor:['#34d39999','#6ee7b799','#60a5fa99','#93c5fd99'],
-    borderColor:['#34d399','#6ee7b7','#60a5fa','#93c5fd'], borderWidth:2}],
+  ['RustFs Path', 'RustFs IS', 'Ozone Path', 'Ozone IS', 'SW Path', 'SW IS'],
+  [{label:'Peak Heap MB (PUT large c16)', data:[593, 1776, 488, 2045, 708, 2747],
+    backgroundColor:['#34d39999','#6ee7b799','#60a5fa99','#93c5fd99','#d4a05399','#c4956a99'],
+    borderColor:['#34d399','#6ee7b7','#60a5fa','#93c5fd','#d4a053','#c4956a'], borderWidth:2}],
   'Peak Heap (MB)');
 
 // Soak GC
 makeBarChart('chartSoakGc',
-  ['RustFs Path', 'RustFs IS', 'Ozone Path', 'Ozone IS'],
-  [{label:'GC Time (ms) over 1 hour', data:[4916, 14280, 15995, 26192],
-    backgroundColor:['#34d39999','#6ee7b799','#60a5fa99','#93c5fd99'],
-    borderColor:['#34d399','#6ee7b7','#60a5fa','#93c5fd'], borderWidth:2}],
+  ['RustFs Path', 'RustFs IS', 'Ozone Path', 'Ozone IS', 'SW Path', 'SW IS'],
+  [{label:'GC Time (ms) over 1 hour', data:[4916, 14280, 15995, 26192, 81733, 90931],
+    backgroundColor:['#34d39999','#6ee7b799','#60a5fa99','#93c5fd99','#d4a05399','#c4956a99'],
+    borderColor:['#34d399','#6ee7b7','#60a5fa','#93c5fd','#d4a053','#c4956a'], borderWidth:2}],
   'GC Time (ms)');
 
 // Soak Heap
 makeBarChart('chartSoakHeap',
-  ['RustFs Path', 'RustFs IS', 'Ozone Path', 'Ozone IS'],
-  [{label:'Peak Heap MB (1hr soak)', data:[390, 1916, 540, 830],
-    backgroundColor:['#34d39999','#6ee7b799','#60a5fa99','#93c5fd99'],
-    borderColor:['#34d399','#6ee7b7','#60a5fa','#93c5fd'], borderWidth:2}],
+  ['RustFs Path', 'RustFs IS', 'Ozone Path', 'Ozone IS', 'SW Path', 'SW IS'],
+  [{label:'Peak Heap MB (1hr soak)', data:[390, 1916, 540, 830, 2815, 3204],
+    backgroundColor:['#34d39999','#6ee7b799','#60a5fa99','#93c5fd99','#d4a05399','#c4956a99'],
+    borderColor:['#34d399','#6ee7b7','#60a5fa','#93c5fd','#d4a053','#c4956a'], borderWidth:2}],
   'Peak Heap (MB)');
 
 // I/O Path detail table
@@ -522,7 +601,8 @@ ioRows.forEach(r => {
     <td><strong>${r[0]}</strong></td><td>${r[1]}</td>
     <td class="num">${r[2]}</td><td class="num">${r[3]}</td>
     <td class="num">${r[4]}</td><td class="num">${r[5]}</td>
-    <td style="font-size:11px">${r[6]}</td>
+    <td class="num">${r[6]}</td><td class="num">${r[7]}</td>
+    <td style="font-size:11px">${r[8]}</td>
   </tr>`;
 });
 
@@ -532,6 +612,7 @@ listRows.forEach(r => {
     <td>${r[0]}</td>
     <td class="num worse">${r[1]}</td><td class="num worse">${r[2]}</td>
     <td class="num better">${r[3]}</td><td class="num better">${r[4]}</td>
-    <td class="num">${r[5]}</td><td class="num">${r[6]}</td>
+    <td class="num" style="color:#d4a053">${r[5]}</td><td class="num" style="color:#c4956a">${r[6]}</td>
+    <td class="num">${r[7]}</td><td class="num">${r[8]}</td><td class="num">${r[9]}</td>
   </tr>`;
 });
