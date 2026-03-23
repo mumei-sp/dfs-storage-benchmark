@@ -402,10 +402,85 @@
           <li><span class="tag tag-green">O(1) needle lookup</span> Volume server keeps needle→offset map in memory (16 bytes per file)</li>
           <li><span class="tag tag-green">OS page cache</span> Hot needles served from RAM — standard Go I/O benefits from OS cache</li>
           <li><span class="tag tag-green">c64 = 20K ops/s</span> No disk saturation — page cache + single-read = massive scaling</li>
-          <li><span class="tag tag-red">IS nearly broken</span> InputStream mode: 80 ops/s at c64 (vs 20K Path) — Filer proxies every byte of streamed reads; per-chunk volume server round-trips + confirmed range-read bug (#7056) + context cancellation (#7395)</li>
+          <li><span class="tag tag-red">IS nearly broken</span> InputStream mode: 80 ops/s at c64 (vs 20K Path) — see detailed analysis below</li>
         </ul>
       </div>
     </div>
+  </div>
+
+  <!-- InputStream Deep Dive: Why SW IS crashes -->
+  <div class="card" style="margin-top:20px;border-left:3px solid var(--red)">
+    <h3 style="color:var(--red)">Why SeaweedFS InputStream Crashes to 80 ops/s (vs 20K Path) — And Why Ozone Doesn't</h3>
+    <p style="font-size:13px;margin:8px 0">SeaweedFS Path mode delivers 20,203 ops/s at c64 — but InputStream drops to just 80 ops/s (a <strong>250x collapse</strong>). Ozone only loses 12% in InputStream mode. The difference is in how each system's middleware handles streaming reads.</p>
+
+    <div class="arch-compare" style="margin:16px 0">
+      <div class="arch-card" style="border-left:3px solid var(--blue)">
+        <h4 style="color:var(--blue)">Ozone InputStream: Direct DN Streams (5,915 → 5,230 ops/s, -12%)</h4>
+        <pre>
+Client sends GET → S3G
+  │
+  ├─ S3G asks OM: "where is object X?"
+  │  OM returns: [DN1:chunk1, DN2:chunk2, DN3:chunk3]
+  │
+  ├─ S3G opens gRPC streams DIRECTLY to DataNodes
+  │  ECKeyInputStream lives INSIDE S3G process
+  │
+  │  DN1 ──gRPC stream──→ ┐
+  │  DN2 ──gRPC stream──→ ├─ ECKeyInputStream (in S3G)
+  │  DN3 ──gRPC stream──→ ┘      │
+  │                          EC decode
+  │                               │
+  └─ S3G streams HTTP response ←──┘
+     to Client
+        </pre>
+        <ul style="font-size:12.5px">
+          <li><span class="tag tag-green">Direct DN connection</span> S3G opens persistent gRPC streams to DataNodes — data flows continuously, no per-chunk HTTP round-trips</li>
+          <li><span class="tag tag-green">OM not in data path</span> OM only returns block locations (metadata). It never sees or buffers actual object data</li>
+          <li><span class="tag tag-green">EC decode is CPU-only</span> Chunks arrive via stream, EC reassembly happens in-process — no extra network hops</li>
+          <li><span class="tag tag-amber">12% drop</span> InputStream adds JVM byte[] allocation + GC pressure vs Path's zero-copy sendfile() — modest overhead</li>
+        </ul>
+      </div>
+      <div class="arch-card" style="border-left:3px solid var(--red)">
+        <h4 style="color:var(--red)">SeaweedFS InputStream: Filer Proxy Bottleneck (20,203 → 80 ops/s, -99.6%)</h4>
+        <pre>
+Client sends GET → S3 Gateway → Filer
+  │
+  ├─ Filer looks up LevelDB: path → [vol:3, needle:01637037d6]
+  │
+  ├─ Filer makes HTTP request TO Volume Server
+  │  Volume Server reads needle → sends bytes back
+  │
+  │  Volume Server ──HTTP──→ Filer (Go memory buffer)
+  │                            │
+  │                    data BUFFERED in Filer RAM
+  │                            │
+  └─ Filer streams buffered ←──┘
+     data back to Client
+        </pre>
+        <p style="font-size:12px;margin:8px 0;padding:6px 10px;background:rgba(248,113,113,.1);border-radius:4px"><strong>The problem:</strong> For chunked/streaming reads, the Filer makes a <strong>separate HTTP request to the Volume Server for each chunk</strong>. The data is copied: <code>Volume disk → Volume memory → Network → Filer memory buffer → Network → Client</code>. Two full network transfers per chunk.</p>
+        <ul style="font-size:12.5px">
+          <li><span class="tag tag-red">Filer proxies ALL bytes</span> Every byte of object data flows through Filer's Go memory — Filer is not just metadata, it's a full data proxy</li>
+          <li><span class="tag tag-red">Per-chunk HTTP round-trip</span> For files split into 4MB chunks, each chunk = new HTTP request from Filer → Volume Server. A 3MB file may be 1 chunk, but the HTTP overhead per request compounds at c64</li>
+          <li><span class="tag tag-red">Range-read bug (#7056)</span> Confirmed: range requests caused Filer to read the <strong>entire file</strong> from Volume Server, not just the requested range — 1000x bandwidth amplification in production</li>
+          <li><span class="tag tag-red">Context cancellation (#7395)</span> Confirmed: streaming context was coupled to HTTP request context — slow client reads (even a JVM GC pause) cause Filer to abort the Volume Server connection. ~75% failure rate on large files</li>
+          <li><span class="tag tag-red">64 concurrent proxy sessions</span> At c64, Filer juggles 64 simultaneous proxy sessions — each with its own Volume Server connection + memory buffer + client connection. Filer's CPU, RAM, and network all saturate</li>
+        </ul>
+      </div>
+    </div>
+
+    <table class="cmp-table" style="margin-top:12px">
+      <thead><tr><th>Factor</th><th>Ozone (S3G → DataNodes)</th><th>SeaweedFS (Filer → Volume)</th></tr></thead>
+      <tbody>
+        <tr><td><strong>Who fetches data from storage?</strong></td><td>S3G reads directly from DataNodes via gRPC streams</td><td>Filer reads from Volume Server via HTTP requests</td></tr>
+        <tr><td><strong>Data buffered in middleware?</strong></td><td>No — EC chunks stream through S3G (pipe, not buffer)</td><td>Yes — full chunk buffered in Filer Go memory before forwarding</td></tr>
+        <tr><td><strong>Connection type to storage</strong></td><td>Persistent gRPC stream (reused across chunks)</td><td>Separate HTTP request per chunk (new connection or pool)</td></tr>
+        <tr><td><strong>Metadata server sees data?</strong></td><td>No — OM only returns block locations</td><td>N/A — Filer IS both metadata AND data proxy</td></tr>
+        <tr><td><strong>Network hops for data</strong></td><td>DN → S3G → Client (stream-through)</td><td>Volume → Filer (buffer) → Client (re-stream)</td></tr>
+        <tr><td><strong>InputStream overhead</strong></td><td>-12% (JVM byte[] alloc + GC only)</td><td class="fail">-99.6% (proxy + buffering + bugs)</td></tr>
+      </tbody>
+    </table>
+
+    <p style="font-size:12px;color:var(--text-dim);margin-top:10px"><strong>Bottom line:</strong> Ozone's S3G acts as a <strong>thin routing layer</strong> — it gets locations from OM, then streams data directly from DataNodes through the EC decoder. The data path is: DN → gRPC → S3G (stream-through) → Client. SeaweedFS's Filer acts as a <strong>full data proxy</strong> — it fetches data from Volume Servers into its own memory, then re-transmits to the client. This double-hop + buffering + per-chunk HTTP overhead is what turns 20K ops/s into 80. Path mode avoids this because the entire object is fetched and returned in a single HTTP response — the proxy overhead is amortized over one request instead of many chunks.</p>
   </div>
 </div>
 
