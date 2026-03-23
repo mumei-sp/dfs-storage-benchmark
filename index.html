@@ -486,7 +486,7 @@ Client sends GET → S3 Gateway → Filer
 
 <!-- ─── HEAD TAB ──────────────────────────────────────────────────────────── -->
 <div class="tab-panel" id="panel-head">
-  <div class="section-title">HEAD Operations — Ozone 1.5-6.5x Faster</div>
+  <div class="section-title">HEAD Operations — SeaweedFS 24K ops/s at c64, Ozone 10K, RustFs 1.6K</div>
   <div class="grid grid-2">
     <div class="card"><h3>HEAD ops/s — Small</h3><div class="chart-wrap"><canvas id="chartHeadOps"></canvas></div></div>
     <div class="card"><h3>HEAD p50 Latency (ms)</h3><div class="chart-wrap"><canvas id="chartHeadLatency"></canvas></div></div>
@@ -518,13 +518,36 @@ Client sends GET → S3 Gateway → Filer
           <li><span class="tag tag-green">Scales to 10K ops/s</span> Linear scaling, p50 stays at 5.9ms at c64</li>
         </ul>
       </div>
+      <div class="arch-card">
+        <h4><span class="dot dot-sw"></span> SeaweedFS HEAD</h4>
+        <pre>HTTP HEAD → S3 Gateway → Filer
+→ LevelDB get(parent_dir + filename)
+→ return metadata from Filer store
+→ NO volume server involvement</pre>
+        <ul>
+          <li><span class="tag tag-green">1 lookup</span> Single LevelDB point query — same O(log N) as Ozone's RocksDB</li>
+          <li><span class="tag tag-green">0 volume access</span> HEAD is purely Filer metadata — volume servers never touched</li>
+          <li><span class="tag tag-green">In-process</span> S3 gateway + Filer in same Go process — no RPC hop (unlike Ozone S3G→OM)</li>
+          <li><span class="tag tag-green">Scales to 24K ops/s</span> 2.4x faster than Ozone — single-process + lighter LevelDB + no per-request OzoneClient</li>
+        </ul>
+      </div>
     </div>
+  </div>
+
+  <div class="card" style="margin-bottom:16px;border-left:3px solid var(--accent)">
+    <h3>Why SeaweedFS Dominates HEAD (24K vs Ozone 10K vs RustFs 1.6K)</h3>
+    <p style="font-size:13px;margin:8px 0">HEAD is a pure metadata operation — no object data is transferred. The performance is entirely determined by how fast each system can look up and return metadata:</p>
+    <ul style="font-size:13px">
+      <li><strong>RustFs (1,585 ops/s):</strong> Must read xl.meta from <strong>all 8 drives</strong> in the erasure set, quorum vote, then return headers. At c64, that's 512 disk I/O ops competing for SATA SSD bandwidth → saturates at ~1,600 ops/s.</li>
+      <li><strong>Ozone (10,188 ops/s):</strong> Single RocksDB get() in OM, served from block cache (in-memory). Fast, but requires S3G → OM RPC round-trip + per-request OzoneClient allocation.</li>
+      <li><strong>SeaweedFS (24,353 ops/s):</strong> Single LevelDB get() in Filer, served in-process (no RPC). The S3 gateway and Filer share the same Go process — HEAD resolves in a single function call to LevelDB. No network hop, no client allocation, no serialization overhead. This is why SW is <strong>2.4x faster than Ozone</strong> despite both using LSM-tree metadata stores.</li>
+    </ul>
   </div>
 </div>
 
 <!-- ─── DELETE TAB ─────────────────────────────────────────────────────────── -->
 <div class="tab-panel" id="panel-delete">
-  <div class="section-title">DELETE Operations — RustFs Faster c1, Ozone 3x at c16</div>
+  <div class="section-title">DELETE Operations — SeaweedFS 644 > Ozone 556 > RustFs 183 ops/s at c16</div>
   <div class="grid grid-2">
     <div class="card"><h3>DELETE ops/s — Small</h3><div class="chart-wrap"><canvas id="chartDeleteOps"></canvas></div></div>
     <div class="card"><h3>DELETE p50 Latency (ms)</h3><div class="chart-wrap"><canvas id="chartDeleteLatency"></canvas></div></div>
@@ -557,7 +580,37 @@ Client sends GET → S3 Gateway → Filer
           <li><span class="tag tag-amber">OM overhead at c1</span> RPC to OM + RocksDB write > raw local disk write at low concurrency</li>
         </ul>
       </div>
+      <div class="arch-card">
+        <h4><span class="dot dot-sw"></span> SeaweedFS DELETE</h4>
+        <pre>HTTP DELETE → S3 Gateway → Filer
+→ delete metadata from LevelDB
+→ mark needle as deleted in volume (soft delete)
+→ return 200 immediately
+→ background: volume.vacuum compaction
+  (triggered when garbage > 30% of volume)</pre>
+        <ul>
+          <li><span class="tag tag-green">1 LevelDB delete</span> Remove Filer metadata entry — in-process, no RPC</li>
+          <li><span class="tag tag-green">Lazy needle cleanup</span> Needle marked as deleted (flag flip) — disk space reclaimed only during vacuum compaction</li>
+          <li><span class="tag tag-green">Fastest at c16</span> 644 ops/s — in-process LevelDB delete + lightweight needle flag, no multi-drive writes like RustFs</li>
+          <li><span class="tag tag-amber">Vacuum compaction</span> Disk space not freed until <code>volume.vacuum</code> runs (default: when garbage > 30% of volume). Until then, deleted needles occupy disk space.</li>
+        </ul>
+      </div>
     </div>
+  </div>
+
+  <div class="card" style="margin-top:20px;border-left:3px solid var(--accent)">
+    <h3>DELETE: All Three Defer Real Work — But Differently</h3>
+    <p style="font-size:13px;margin:8px 0">All three systems return 200 OK before fully reclaiming disk space. The benchmark measures time-to-ACK, not time-to-reclaim:</p>
+    <table class="cmp-table" style="margin-top:10px">
+      <thead><tr><th>Phase</th><th>RustFs</th><th>Ozone</th><th>SeaweedFS</th></tr></thead>
+      <tbody>
+        <tr><td><strong>What the benchmark measures</strong></td><td>Write DeleteMarker to 8 drives (quorum)</td><td>Move key in RocksDB (keyTable → deletedTable)</td><td>Delete LevelDB entry + flag needle as deleted</td></tr>
+        <tr><td><strong>Measured ops/s (c16)</strong></td><td class="num">183</td><td class="num">556</td><td class="num better">644</td></tr>
+        <tr><td><strong>Why this speed?</strong></td><td>8 disk writes across erasure set — physical I/O bottleneck</td><td>1 RocksDB WriteBatch (in-memory) — fast but S3G→OM RPC hop</td><td>1 LevelDB delete (in-process) + 1 volume flag — zero RPC overhead</td></tr>
+        <tr><td><strong>When disk space freed</strong></td><td>Background trash cleanup (~5 min)</td><td>KeyDeletingService → SCM → DN (minutes, 3-stage pipeline)</td><td>volume.vacuum (manual or when garbage > 30%)</td></tr>
+        <tr><td><strong>Impact on live traffic</strong></td><td>Minimal — each node cleans independently</td><td>GC storm risk — SCM + DNs busy with delete I/O</td><td>Vacuum rewrites entire volume — brief I/O spike during compaction</td></tr>
+      </tbody>
+    </table>
   </div>
 
   <div class="card" style="margin-top:20px;border-left:3px solid var(--amber)">
